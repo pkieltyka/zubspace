@@ -93,6 +93,51 @@
       } catch { return null; }
     },
   };
+  // Acknowledgement is browser-local; storage may be unavailable in private mode.
+  global.zubspaceCreateControlsWelcome = ({ dialog, button, title, storage }) => {
+    const key = "zubspace.controls-welcome.v1";
+    let acknowledged = false, persisted = false, pending = null;
+    const needed = () => {
+      try { acknowledged ||= storage().getItem(key) === "1"; } catch { /* use this page's memory */ }
+      return !acknowledged;
+    };
+    const welcome = () => {
+      if (!needed()) return Promise.resolve(true);
+      if (pending) return pending;
+      const previousTitle = title.textContent;
+      title.textContent = "Welcome, player";
+      dialog.dataset.welcome = "true";
+      button.hidden = false;
+      pending = new Promise(resolve => {
+        let accepted = false;
+        const accept = () => { accepted = true; dialog.close(); };
+        const close = () => {
+          button.removeEventListener("click", accept);
+          dialog.removeEventListener("close", close);
+          title.textContent = previousTitle;
+          delete dialog.dataset.welcome;
+          button.hidden = true;
+          pending = null;
+          if (accepted) {
+            acknowledged = true;
+          }
+          resolve(accepted);
+        };
+        button.addEventListener("click", accept);
+        dialog.addEventListener("close", close);
+        dialog.showModal();
+        // Start at the welcome and keyboard, rather than the bottom action.
+        title.focus();
+      });
+      return pending;
+    };
+    welcome.needed = needed;
+    welcome.markJoined = () => {
+      if (!acknowledged || persisted) return;
+      try { storage().setItem(key, "1"); persisted = true; } catch { /* retain this page's acknowledgement */ }
+    };
+    return welcome;
+  };
   if (!global.document) return;
   const overlay = document.querySelector("#loading-overlay");
   const canvas = document.querySelector("#menu-stars");
@@ -161,6 +206,12 @@
   document.querySelector("#mobile-join-message").hidden = !mobile;
   const dialog = document.querySelector("#controls-dialog");
   document.body.appendChild(dialog);
+  const welcomeControls = global.zubspaceCreateControlsWelcome({
+    dialog,
+    button: document.querySelector("#controls-ready"),
+    title: document.querySelector("#controls-title"),
+    storage: () => global.localStorage,
+  });
   global.zubspaceShowControls = () => {
     if (!dialog.open) {
       dispatchEvent(new Event("zubspace-controls-open"));
@@ -278,6 +329,7 @@
   global.zubspaceMenu = {
     get active() { return active; },
     mobile,
+    welcomeControls,
     get selectedShip() { return selectedShip; },
     setSelectedShip(index) {
       if (!Number.isInteger(index) || index < 0 || index > 7) return false;

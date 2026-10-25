@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { acknowledgeControlsWelcome } from "./browser_controls_welcome.mjs";
 import { fetchGameStatusResponse } from "./game_status.mjs";
 import { dispatchChromeKey, keyEvent } from "../tests/e2e/combat_replay.mjs";
 import { isDeepStrictEqual } from "node:util";
@@ -1665,6 +1666,8 @@ async function openClient(chromePort, pageUrl, options = {}) {
       await send("Runtime.evaluate", {
         expression: `document.querySelector('#player-name-form')?.requestSubmit()`,
       });
+      await acknowledgeControlsWelcome(send, async expression =>
+        (await send("Runtime.evaluate", { expression, returnByValue: true })).result.value);
     },
     async joinMenuWithMouse() {
       const target = await send("Runtime.evaluate", { returnByValue: true,
@@ -1676,6 +1679,8 @@ async function openClient(chromePort, pageUrl, options = {}) {
       for (const type of ["mousePressed", "mouseReleased"]) {
         await send("Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 });
       }
+      await acknowledgeControlsWelcome(send, async expression =>
+        (await send("Runtime.evaluate", { expression, returnByValue: true })).result.value);
       return { input: "mouse", selectedArena: (await this.runtimeBootstrapState()).selectedArena };
     },
     async assertMenuKeyboardIsolation() {

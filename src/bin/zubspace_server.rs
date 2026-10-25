@@ -143,6 +143,8 @@ mod server_explosions;
 mod server_tick;
 #[path = "zubspace_server/session.rs"]
 mod session;
+#[path = "zubspace_server/session_summary.rs"]
+mod session_summary;
 #[path = "../gameplay/player_movement.rs"]
 mod shared_player_movement;
 #[path = "zubspace_server/sim_observation.rs"]

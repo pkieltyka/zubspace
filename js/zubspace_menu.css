@@ -240,3 +240,11 @@
 @media (prefers-reduced-motion: reduce) {
   #controls-open, .controls-launch-icon { transition: none; }
 }
+
+/* First-play acknowledgement shares the guide; ordinary help has no join action. */
+.controls-welcome-action { display: none; }
+#controls-dialog[data-welcome="true"] .controls-welcome-action { display: block; margin-top: 24px; text-align: center; }
+.controls-welcome-action p { color: #bdb5ce; font-size: 14px; line-height: 1.6; }
+#controls-ready { min-height: 48px; padding: 12px 32px; border: 1px solid #c5a6ed; background: #49336c; color: #fff; font: 16px/1.4 ui-monospace, Consolas, monospace; cursor: pointer; }
+#controls-ready:hover { background: #604687; }
+#controls-ready:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }

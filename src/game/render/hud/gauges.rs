@@ -12,6 +12,51 @@ pub(super) const REFERENCE_GAME_HEALTHBAR_SOURCE: Rect = Rect {
 };
 
 impl Game {
+    pub(super) fn draw_connection_ping(&self) {
+        if !self.networked_play {
+            return;
+        }
+        let ping = crate::browser_metrics::connection_ping_ms();
+        let suffix = " ms";
+        let right = screen_width() - 4.0;
+        let y = self.assets.energy_font.frame_size.y + 4.0;
+        let suffix_width = self.assets.tall_font.measure_width(suffix);
+        self.assets
+            .tall_font
+            .draw_scaled(suffix, right, y, TextColor::Blue, TextAlign::Right, 1.0);
+        if let Some(ping) = ping {
+            // Half-sized original energy sprites keep the HUD's digit style.
+            let digits = ping.to_string();
+            let size = self.assets.energy_font.frame_size * 0.5;
+            let left = right - suffix_width - digits.len() as f32 * size.x;
+            for (index, digit) in digits.bytes().enumerate() {
+                draw_texture_ex(
+                    &self.assets.energy_font.texture,
+                    left + index as f32 * size.x,
+                    y,
+                    WHITE,
+                    DrawTextureParams {
+                        dest_size: Some(size),
+                        source: Some(
+                            self.assets
+                                .energy_font
+                                .source_for_frame((digit - b'0') as usize),
+                        ),
+                        ..Default::default()
+                    },
+                );
+            }
+        } else {
+            self.assets.tall_font.draw_scaled(
+                "--",
+                right - suffix_width,
+                y,
+                TextColor::Blue,
+                TextAlign::Right,
+                1.0,
+            );
+        }
+    }
     pub(super) fn draw_energy_bar(&self, x: f32, tuning_energy_max: f32) {
         let visible_energy = self.visible_hud_energy();
         let center_x = x + REFERENCE_GAME_HEALTHBAR_WIDTH * 0.5;

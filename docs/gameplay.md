@@ -147,10 +147,22 @@ sent; Tab completes a name after `/p`.
 | `'text`, `//text`, `/t text`, `/team text` | Team message |
 | `/p name text` (also `/pm`, `/msg`, `/private`) | Private message, by name, name prefix or player id |
 | `/s N text`, `/sound N text` | Message with chat sound N (0–255) |
+| `?ping`, `?lag` | Show local RTC connection diagnostics |
 | `?status` | Show recharge, thruster, speed and rotation upgrade percentages and shrapnel |
 | `?sound N`, `?chat N`, `?voice N`, `?music N` | Volume 0–10 (`?sound=N` also works) |
 
 The server only relays chat; it has no `?` or `*` commands.
+
+### Connection diagnostics
+
+The top-right HUD shows the selected WebRTC route's round-trip time beneath
+energy, in milliseconds, sampled once a second. Missing, disconnected or stale
+measurements display `-- ms`; local offline play has no ping readout. This is
+transport RTT, not a measurement of server processing or presentation delay.
+`?ping` reports current, average, low and high RTT over up to 60 recent samples.
+`?lag` adds mean successive RTT variation. Packet loss is explicitly unavailable:
+the server's probe-loss readings are not sent to the client by this protocol.
+Both commands reply locally in chat without broadcasting the request.
 
 ### Developer keys
 

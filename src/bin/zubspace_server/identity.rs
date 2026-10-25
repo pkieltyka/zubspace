@@ -189,6 +189,9 @@ pub(crate) fn admit_player_login(
         client.player.flag_points = stats.flag_points;
         client.player.wins = stats.wins;
         client.player.losses = stats.losses;
+        client
+            .session_summary
+            .scores_restored(stats.wins, stats.losses);
     }
     client.player_identity = Some(identity);
     client.player.name = name;

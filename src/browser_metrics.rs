@@ -198,3 +198,31 @@ pub(crate) fn frequency_changes_allowed() -> bool {
 pub(crate) fn frequency_changes_allowed() -> bool {
     false
 }
+
+/// Selected WebRTC route RTT; no fabricated zero while disconnected/unmeasured.
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn connection_ping_ms() -> Option<u32> {
+    unsafe extern "C" {
+        fn zub_connection_ping_ms() -> i32;
+    }
+    u32::try_from(unsafe { zub_connection_ping_ms() }).ok()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn connection_ping_ms() -> Option<u32> {
+    None
+}
+
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn connection_ping_stats() -> Option<[u32; 5]> {
+    unsafe extern "C" {
+        fn zub_connection_ping_stats(out: *mut u32) -> i32;
+    }
+    let mut stats = [0; 5];
+    (unsafe { zub_connection_ping_stats(stats.as_mut_ptr()) } == 1).then_some(stats)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn connection_ping_stats() -> Option<[u32; 5]> {
+    None
+}

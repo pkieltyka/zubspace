@@ -52,8 +52,9 @@ mod weapons;
 
 pub(crate) use batching::send_position_relays_batched;
 use weapons::{
-    accepted_position_weapon, mine_blocked_by_mine_limits, preview_accepted_position_weapon,
-    preview_position_weapon, proximity_bomb_blocked_by_bomb_safety,
+    WeaponBlock, accepted_position_weapon, mine_blocked_by_mine_limits,
+    preview_accepted_position_weapon, preview_position_weapon,
+    proximity_bomb_blocked_by_bomb_safety,
 };
 
 const POSITION_RELAY_RATE_WINDOW: Duration = Duration::from_millis(50);
@@ -858,6 +859,9 @@ pub(crate) fn apply_movement_correction_application_at_tick(
         state.movement_snapbacks_total = state.movement_snapbacks_total.saturating_add(1);
         state.movement_snapbacks_since_summary =
             state.movement_snapbacks_since_summary.saturating_add(1);
+        if let Some(client) = state.clients.get_mut(&player_id) {
+            client.session_summary.snapbacks += 1;
+        }
         tracing::warn!(
             player_id,
             life_seq = identity.life.life_seq,
@@ -1258,6 +1262,7 @@ fn accept_position_relay_with_spawn_deferral(
         if !current_sender.joined || current_sender.player.ship >= 8 {
             return None;
         }
+        let mut combat_view_rejection = None;
         let projectile_combat_timeline = if snapshot.weapon != 0 {
             match bind_human_projectile_timeline(
                 state,
@@ -1274,6 +1279,7 @@ fn accept_position_relay_with_spawn_deferral(
                         reason = rejection.reason(),
                         "weapon edge has no admissible server combat-view binding"
                     );
+                    combat_view_rejection = Some(rejection.reason());
                     None
                 }
             }
@@ -1288,6 +1294,12 @@ fn accept_position_relay_with_spawn_deferral(
             client_sequence,
             snapshot.weapon,
         );
+        let weapon_block = WeaponBlock {
+            bomb_safety: bomb_safety_blocked,
+            mine_limit: mine_limit_blocked,
+            objective_ball: objective_weapon_blocked,
+            combat_view: combat_view_rejection,
+        };
         let respawn_transition = !current_sender.alive;
         if respawn_transition && (canonical_input.bits != 0 || canonical_input.direction != 0) {
             debug!(
@@ -1552,10 +1564,7 @@ fn accept_position_relay_with_spawn_deferral(
                 sender,
                 snapshot,
                 in_safe_tile,
-                bomb_safety_blocked
-                    || mine_limit_blocked
-                    || objective_weapon_blocked
-                    || combat_view_weapon_blocked,
+                weapon_block,
                 server_tick_at_accept,
                 is_flagger,
             );
@@ -2123,6 +2132,12 @@ fn accept_position_relay_with_spawn_deferral(
                     "first differing field in the rejected canonical tail; origin remains unclassified"
                 );
             }
+            // Count on the live handle; the staged sender is discarded.
+            if let Some(current) = state.clients.get_mut(&player_id)
+                && current.session_id == sender.session_id
+            {
+                current.session_summary.position_rejects += 1;
+            }
             log_security_reject(player_id, "position", "canonical_state_mismatch");
             return None;
         }
@@ -2390,10 +2405,7 @@ fn accept_position_relay_with_spawn_deferral(
             sender,
             snapshot,
             in_safe_tile,
-            bomb_safety_blocked
-                || mine_limit_blocked
-                || objective_weapon_blocked
-                || combat_view_weapon_blocked,
+            weapon_block,
             server_tick_at_accept,
             is_flagger,
         );
@@ -3936,15 +3948,17 @@ fn consume_stale_weapon_mirror(
     canonical_snapshot.direction = witness.direction;
     let in_safe_tile =
         world_position_in_safe_tile_for_map(map, canonical_snapshot.x, canonical_snapshot.y);
-    let blocked_by_arena_rule =
-        proximity_bomb_blocked_by_bomb_safety(state, player_id, canonical_snapshot)
-            || mine_blocked_by_mine_limits(state, player_id, canonical_snapshot);
-    let objective_weapon_blocked = objective_weapon_substitutes_ball_fire(
-        state,
-        player_id,
-        client_sequence,
-        canonical_snapshot.weapon,
-    );
+    let mut weapon_block = WeaponBlock {
+        bomb_safety: proximity_bomb_blocked_by_bomb_safety(state, player_id, canonical_snapshot),
+        mine_limit: mine_blocked_by_mine_limits(state, player_id, canonical_snapshot),
+        objective_ball: objective_weapon_substitutes_ball_fire(
+            state,
+            player_id,
+            client_sequence,
+            canonical_snapshot.weapon,
+        ),
+        combat_view: None,
+    };
     let projectile_combat_timeline = match bind_human_projectile_timeline(
         state,
         player_id,
@@ -3960,17 +3974,17 @@ fn consume_stale_weapon_mirror(
                 reason = rejection.reason(),
                 "mirrored weapon edge has no admissible server combat-view binding"
             );
+            weapon_block.combat_view = Some(rejection.reason());
             None
         }
     };
-    let combat_view_weapon_blocked = projectile_combat_timeline.is_none();
     let is_flagger = player_flagger_active(state, player_id);
     let previewed_weapon = state.clients.get(&player_id).map_or(0, |sender| {
         preview_accepted_position_weapon(
             sender,
             canonical_snapshot,
             in_safe_tile,
-            blocked_by_arena_rule || objective_weapon_blocked || combat_view_weapon_blocked,
+            weapon_block,
             server_tick_at_accept,
             is_flagger,
         )
@@ -4028,7 +4042,7 @@ fn consume_stale_weapon_mirror(
             sender,
             canonical_snapshot,
             in_safe_tile,
-            blocked_by_arena_rule || objective_weapon_blocked || combat_view_weapon_blocked,
+            weapon_block,
             server_tick_at_accept,
             is_flagger,
         );
@@ -4187,7 +4201,7 @@ pub(crate) fn preview_and_commit_position_weapon_with_ball_policy_for_test(
         state.clients.get(&player_id)?,
         snapshot,
         false,
-        blocked,
+        WeaponBlock::objective_ball(blocked),
         server_fire_tick,
         flagger_active,
     );
@@ -4195,7 +4209,7 @@ pub(crate) fn preview_and_commit_position_weapon_with_ball_policy_for_test(
         state.clients.get_mut(&player_id)?,
         snapshot,
         false,
-        blocked,
+        WeaponBlock::objective_ball(blocked),
         server_fire_tick,
         flagger_active,
     );
@@ -4231,7 +4245,7 @@ pub(crate) fn preview_and_commit_position_weapon_for_test(
         state.clients.get(&player_id)?,
         snapshot,
         objective_weapon_blocked,
-        objective_weapon_blocked,
+        WeaponBlock::objective_ball(objective_weapon_blocked),
         server_fire_tick,
         flagger_active,
     );
@@ -4239,7 +4253,7 @@ pub(crate) fn preview_and_commit_position_weapon_for_test(
         state.clients.get_mut(&player_id)?,
         snapshot,
         false,
-        false,
+        WeaponBlock::default(),
         server_fire_tick,
         flagger_active,
     );
@@ -4842,6 +4856,7 @@ mod tests {
             snapshot_holds: Default::default(),
             maxed_spawn_loadout: false, // This fixture tests the authored base movement model.
             spawn_idle: Default::default(),
+            session_summary: Default::default(),
             session_id: PlayerSessionId::new(1),
             arena_stream_id: 1,
             inputs_received: 0,

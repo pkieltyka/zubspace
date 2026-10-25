@@ -528,6 +528,7 @@ pub(crate) struct ClientHandle {
     pub(crate) snapshot_holds: std::collections::HashMap<u16, u8>,
     pub(crate) maxed_spawn_loadout: bool,
     pub(crate) spawn_idle: crate::spawn_idle::SpawnIdleTracker,
+    pub(crate) session_summary: crate::session_summary::SessionSummary,
     /// Internal transport incarnation. Unlike the reusable Continuum player
     /// id, this value is allocated once and never reused by this server state.
     pub(crate) session_id: PlayerSessionId,
@@ -2776,6 +2777,7 @@ impl ServerState {
             positions_received = client.positions_received,
             "session_audit"
         );
+        crate::session_summary::log(&client);
         let retired_session = PlayerSessionIdentity::new(player_id, client.session_id);
         self.pending_owner_weapon_cancellations
             .remove(&retired_session);

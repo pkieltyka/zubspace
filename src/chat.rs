@@ -218,6 +218,42 @@ pub(crate) fn parse_frequency_change_input(input: &str) -> Result<Option<u16>, &
         .map_err(|_| "frequency is out of range")
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum NetworkInfoCommand {
+    Ping,
+    Lag,
+}
+
+pub(crate) fn parse_network_info_command(input: &str) -> Option<NetworkInfoCommand> {
+    match input.trim().to_ascii_lowercase().as_str() {
+        "?ping" => Some(NetworkInfoCommand::Ping),
+        "?lag" => Some(NetworkInfoCommand::Lag),
+        _ => None,
+    }
+}
+
+pub(crate) fn network_info_messages(
+    command: NetworkInfoCommand,
+    stats: Option<[u32; 5]>,
+) -> Vec<String> {
+    let mut messages = match stats {
+        Some([current, average, low, high, _]) => vec![format!(
+            "RTC ping: {current} ms (avg {average}, low {low}, high {high}; last 60 samples)."
+        )],
+        None => vec!["RTC ping unavailable: waiting for a connected, current measurement.".into()],
+    };
+    if command == NetworkInfoCommand::Lag {
+        if let Some([_, _, _, _, variation]) = stats {
+            messages.push(format!(
+                "RTT variation: {variation} ms. Packet loss: unavailable in client diagnostics."
+            ));
+        } else {
+            messages.push("Packet loss: unavailable in client diagnostics.".into());
+        }
+    }
+    messages
+}
+
 pub(crate) fn parse_status_command(input: &str) -> bool {
     input.trim().eq_ignore_ascii_case("?status")
 }
@@ -395,5 +431,40 @@ impl LocalChatMessage {
     fn with_sound(mut self, sound: u8) -> Self {
         self.request = self.request.with_sound(sound);
         self
+    }
+}
+
+#[cfg(test)]
+mod network_info_tests {
+    use super::*;
+
+    #[test]
+    fn network_info_commands_are_exact_local_commands() {
+        assert_eq!(
+            parse_network_info_command(" ?PiNg\t"),
+            Some(NetworkInfoCommand::Ping)
+        );
+        assert_eq!(
+            parse_network_info_command("?lag"),
+            Some(NetworkInfoCommand::Lag)
+        );
+        for ordinary in ["ping", "?ping now", "hello ?lag", "/ping", "?lagging", ""] {
+            assert_eq!(parse_network_info_command(ordinary), None);
+        }
+    }
+
+    #[test]
+    fn network_info_replies_label_rtt_and_do_not_invent_packet_loss() {
+        let stats = Some([44, 50, 40, 70, 6]);
+        let ping = network_info_messages(NetworkInfoCommand::Ping, stats);
+        assert_eq!(ping.len(), 1);
+        assert!(ping[0].contains("44 ms (avg 50, low 40, high 70"));
+        let lag = network_info_messages(NetworkInfoCommand::Lag, stats);
+        assert_eq!(lag.len(), 2);
+        assert!(lag[1].contains("variation: 6 ms"));
+        assert!(lag[1].contains("Packet loss: unavailable"));
+        let missing = network_info_messages(NetworkInfoCommand::Lag, None);
+        assert!(missing[0].contains("unavailable"));
+        assert!(!missing.join(" ").contains("0 ms"));
     }
 }

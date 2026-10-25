@@ -277,6 +277,16 @@ pub(crate) fn receive_player_report(
             .browser_game_sends_dropped
             .saturating_add(u64::from(dropped));
     }
+    if let Some(client) = state.clients.get_mut(&identity.player_id) {
+        client.session_summary.browser_report(
+            frames,
+            sum_us,
+            slow,
+            max_us,
+            corrections,
+            (ice_us != u32::MAX).then_some(ice_us),
+        );
+    }
     tracing::debug!(event = "player_experience_window", player_id = identity.player_id,
         session_id = ?identity.session_id, arena_stream_id = u64_at(10), life_seq = u32_at(18),
         frames, slow_frames = slow, frame_mean_us = sum_us / frames, frame_max_us = max_us,

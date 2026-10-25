@@ -75,6 +75,7 @@ pub(crate) fn register_connection_with_sender_in_state_at_tick(
             snapshot_holds: Default::default(),
             maxed_spawn_loadout,
             spawn_idle: Default::default(),
+            session_summary: Default::default(),
             session_id,
             arena_stream_id: 0,
             inputs_received: 0,

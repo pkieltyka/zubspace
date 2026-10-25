@@ -372,9 +372,26 @@ pub(crate) struct SessionConnectionQuality {
     pub(crate) echoes: u64,
     pub(crate) dispatch_cancelled: u64,
     pub(crate) invalid_echoes: u64,
+    /// Highest logged window's average RTT, and the running total and count
+    /// behind their mean, for the session summary.
+    pub(crate) window_rtt_ms_peak: f64,
+    window_rtt_ms_total: f64,
+    rtt_windows: u32,
 }
 
 impl SessionConnectionQuality {
+    pub(crate) fn window_rtt_ms_mean(&self) -> Option<f64> {
+        (self.rtt_windows > 0).then(|| self.window_rtt_ms_total / f64::from(self.rtt_windows))
+    }
+
+    fn record_window_rtt(&mut self, average_rtt_ms: Option<f64>) {
+        if let Some(rtt) = average_rtt_ms {
+            self.window_rtt_ms_peak = self.window_rtt_ms_peak.max(rtt);
+            self.window_rtt_ms_total += rtt;
+            self.rtt_windows += 1;
+        }
+    }
+
     pub(crate) fn new(now: Instant) -> Self {
         Self {
             arena_stream_id: 0,
@@ -390,6 +407,9 @@ impl SessionConnectionQuality {
             echoes: 0,
             dispatch_cancelled: 0,
             invalid_echoes: 0,
+            window_rtt_ms_peak: 0.0,
+            window_rtt_ms_total: 0.0,
+            rtt_windows: 0,
         }
     }
 
@@ -576,6 +596,7 @@ pub(crate) fn poll_client(
                 host_healthy,
                 "server connection quality window"
             );
+            quality.record_window_rtt(reading.average_rtt_ms);
         }
         if host_healthy && quality.queued.is_none() && quality.monitor.probe_due(now) {
             let mut bytes = [0u8; 8];

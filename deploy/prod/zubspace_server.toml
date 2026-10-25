@@ -20,10 +20,12 @@ bot_ship_types = "1,4,5,7"
 
 log_level = "info"
 # Prod keeps lifecycle lines (startup, joins, leaves, disconnects), the
-# 10-second connection quality windows and every WARN/ERROR. It drops the
+# 10-second connection quality windows, each session's summary and every
+# WARN/ERROR. `observability=debug` adds each browser's five-second
+# experience report (frame times, corrections, RTT). It drops the
 # per-shot, per-hit, per-damage and per-acknowledgement lines
 # (src/bin/zubspace_server/log_targets.rs); dev logs those at DEBUG.
-log_filter = "zubspace_server::server_tick::combat=warn,zubspace_server::server_damage::combat=warn,zubspace_server::arena::positions::combat=warn,zubspace_server::arena::positions::weapons::combat=warn,zubspace_server::reliable::acks=warn,zubspace_server::rtc::acks=warn"
+log_filter = "zubspace_server::observability=debug,zubspace_server::server_tick::combat=warn,zubspace_server::server_damage::combat=warn,zubspace_server::arena::positions::combat=warn,zubspace_server::arena::positions::weapons::combat=warn,zubspace_server::reliable::acks=warn,zubspace_server::rtc::acks=warn"
 log_format = "json"
 # stdout, which the journald log driver stores under the host's journal cap.
 log_file = ""

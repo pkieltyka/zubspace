@@ -262,7 +262,12 @@ impl Game {
                 self.push_notification(&notification, GREEN);
             }
             Ok(None) => {
-                if parse_status_command(&message) {
+                if let Some(command) = crate::chat::parse_network_info_command(&message) {
+                    let stats = crate::browser_metrics::connection_ping_stats();
+                    for line in crate::chat::network_info_messages(command, stats) {
+                        self.chat.push_message(line, TextColor::Green);
+                    }
+                } else if parse_status_command(&message) {
                     let status = self.local_status_message();
                     self.chat.push_message(status, TextColor::Green);
                 } else {

@@ -7,6 +7,55 @@
   const REPORT_LENGTHS = { 1: 54, 2: 62 };
   const MAX_BUFFERED_PEAK = 16 * 1024 * 1024;
   const MAX_DROPPED_SENDS = 10_000;
+  function selectedRttMs(stats) {
+    let selectedId = null;
+    stats.forEach(entry => { if (entry.type === "transport" && entry.selectedCandidatePairId) selectedId = entry.selectedCandidatePairId; });
+    const candidates = [];
+    stats.forEach(entry => {
+      if (entry.type === "candidate-pair" && (selectedId ? entry.id === selectedId : entry.nominated && entry.state === "succeeded")) candidates.push(entry);
+    });
+    const seconds = candidates.length === 1 ? candidates[0].currentRoundTripTime : null;
+    return Number.isFinite(seconds) && seconds >= 0 && seconds <= 10 ? Math.round(seconds * 1000) : null;
+  }
+  // Read by the HUD; one asynchronous stats request per second, never per frame.
+  function createPing({ now, peer, visible }) {
+    let active = null, pending = null, value = null, sampledAt = -Infinity, next = -Infinity;
+    let samples = [];
+    const read = () => {
+      const current = peer(), time = now();
+      if (current !== active) { samples = []; pending = null; }
+      if (current !== active || !visible() || current?.connectionState !== "connected") {
+        active = current; value = null; sampledAt = next = -Infinity;
+      }
+      if (!visible() || current?.connectionState !== "connected") return -1;
+      if (!pending && time >= next) {
+        next = time + 1000;
+        // Promise.resolve also isolates synchronous getStats failures.
+        const request = Promise.resolve().then(() => current.getStats()).then(stats => {
+          if (current === peer() && current.connectionState === "connected" && visible() && now() - time <= 3000) {
+            value = selectedRttMs(stats); sampledAt = time;
+            if (value !== null) {
+              samples.push(value);
+              if (samples.length > 60) samples.shift();
+            }
+          }
+        }).catch(() => { if (current === active) value = null; }).finally(() => {
+          if (pending === request) pending = null;
+        });
+        pending = request;
+      }
+      return value !== null && time - sampledAt <= 3000 ? value : -1;
+    };
+    read.stats = () => {
+      const current = read();
+      if (current < 0 || samples.length === 0) return null;
+      const average = Math.round(samples.reduce((sum, sample) => sum + sample, 0) / samples.length);
+      const variation = samples.length < 2 ? 0 : Math.round(samples.slice(1).reduce(
+        (sum, sample, i) => sum + Math.abs(sample - samples[i]), 0) / (samples.length - 1));
+      return [current, average, Math.min(...samples), Math.max(...samples), variation];
+    };
+    return read;
+  }
   function create({ now, visible, peer, send, transport = null }) {
     let previous = null;
     let lastDropped = null;
@@ -72,5 +121,5 @@
     }
     return { frame, report, reset };
   }
-  global.ZubspacePlayerTelemetry = Object.freeze({ create });
+  global.ZubspacePlayerTelemetry = Object.freeze({ create, createPing });
 })(globalThis);

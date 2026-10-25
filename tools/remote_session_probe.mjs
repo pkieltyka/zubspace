@@ -11,6 +11,7 @@
 // DataChannel messages and bytes per channel. Prints one JSON object with the
 // window's start and end times for matching server metrics and logs. This is a
 // measurement, not an acceptance gate.
+import { acknowledgeControlsWelcome } from "./browser_controls_welcome.mjs";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -166,6 +167,7 @@ try {
   await send("Input.insertText", { text: result.name });
   await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
   await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
+  await acknowledgeControlsWelcome(send, evaluate);
   await waitFor("an authoritative gameplay life", "window.__zubspaceLifecycle?.inGameplay === true", 30_000);
   // Let the join settle so the window measures steady play, not the join burst.
   await sleep(3000);

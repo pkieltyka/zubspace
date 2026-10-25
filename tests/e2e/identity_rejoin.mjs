@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { acknowledgeControlsWelcome } from "../../tools/browser_controls_welcome.mjs";
 import { fetchGameStatusResponse } from "../../tools/game_status.mjs";
 // Admission through real form input and ordinary RTC only. SIGKILL is an
 // explicit owned-browser crash fixture, never a gameplay packet/state hook.
@@ -31,6 +32,7 @@ async function submit(send,evaluate){
   await send("Input.insertText",{text:name});
   await send("Input.dispatchKeyEvent",{type:"keyDown",key:"Enter",code:"Enter",windowsVirtualKeyCode:13});
   await send("Input.dispatchKeyEvent",{type:"keyUp",key:"Enter",code:"Enter",windowsVirtualKeyCode:13});
+  await acknowledgeControlsWelcome(send, evaluate);
 }
 async function identity(client){return client.evaluate(`(() => {
   const input=document.querySelector('#player-name-input');
