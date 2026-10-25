@@ -2738,6 +2738,63 @@ fn a_shed_recipient_is_not_refused_for_frames_the_server_never_sent() {
     );
 }
 
+/// A refused shot names why its input has no verified view. Prod saw only the
+/// generic `projectile_timeline_unverified_input` for distant players whose
+/// receipts aged past the hold grace; the frozen receipt rejection says so.
+#[test]
+fn an_unverified_weapon_names_its_frozen_receipt_rejection() {
+    use crate::combat_timeline::ProjectileTimelineBindingRejection as Binding;
+    let (state, alpha, _beta, _gamma, _rx_a, _rx_b, _rx_c) = place_three_aoi_clients();
+    {
+        let mut state = state.lock().expect("server state should not be poisoned");
+        state.arena_tick = 2;
+    }
+    emit_snapshots_for_tick_inner(&state, true);
+    let mut state = state.lock().expect("server state should not be poisoned");
+    let runtime = state
+        .active_player_runtime_identity(alpha)
+        .expect("alpha should have a runtime");
+    let directive = state.clients[&alpha]
+        .observer_combat_timeline
+        .current_directive()
+        .expect("a joined client owns a directive");
+    let rejected = directive.effective_from_input_sequence.wrapping_add(2);
+    let client = state.clients.get_mut(&alpha).expect("alpha should exist");
+    let verdict = client.observer_combat_timeline.verify_receipt(
+        runtime,
+        crate::wire::current_tick(),
+        crate::combat_timeline::CombatViewReceiptV1 {
+            observer_life_seq: runtime.life.life_seq,
+            input_sequence: rejected,
+            timeline_generation: directive.generation,
+            // Never emitted to this recipient.
+            latest_game_applied_snapshot_id: 0xbeef,
+            flags: 0,
+        },
+        &client.observer_presentation_history,
+    );
+    let frozen = verdict.expect_err("an unknown applied snapshot cannot verify");
+
+    let cause =
+        crate::arena::combat_view_block_cause(&state, alpha, rejected, Binding::UnverifiedInput);
+    assert_eq!(cause, frozen.reason());
+    assert_ne!(cause, Binding::UnverifiedInput.reason());
+    // No receipt at all keeps the binding's own reason, as do other failures.
+    assert_eq!(
+        crate::arena::combat_view_block_cause(
+            &state,
+            alpha,
+            rejected.wrapping_add(40),
+            Binding::UnverifiedInput
+        ),
+        Binding::UnverifiedInput.reason()
+    );
+    assert_eq!(
+        crate::arena::combat_view_block_cause(&state, alpha, rejected, Binding::HeldOrStalled),
+        Binding::HeldOrStalled.reason()
+    );
+}
+
 #[test]
 fn transient_high_ewma_does_not_shed_a_clean_lan_frame() {
     let (state, _alpha, _beta, _gamma, rx_a, rx_b, rx_c) = place_three_aoi_clients();

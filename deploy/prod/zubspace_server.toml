@@ -42,7 +42,11 @@ quality_recovery_loss_per_mille = 100
 
 enable_objectives = false
 sim_observe = false
-observer_network_profile = "clean-lan"
+# Per-connection remote presentation delay (70-200 ms from measured RTT,
+# docs/connection-quality.md). A fixed "clean-lan" 70 ms cannot be served to a
+# player beyond about 130 ms RTT: their combat-view receipts age past the hold
+# grace and the server refuses their shots as unverified.
+observer_network_profile = "auto"
 qa_trace_upload = false
 # No client presentation traces in prod. Browsers still send the 62-byte
 # five-second experience reports that feed zubspace_browser_* metrics.

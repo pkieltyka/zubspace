@@ -37,7 +37,8 @@ quality_recovery_loss_per_mille = 100
 
 enable_objectives = false
 sim_observe = false
-observer_network_profile = "clean-lan"
+# As prod: per-connection presentation delay, so distant players' shots verify.
+observer_network_profile = "auto"
 qa_trace_upload = false
 # Every joined browser uploads a compact presentation window about every 20
 # seconds (docs/observability.md, "Client presentation traces").

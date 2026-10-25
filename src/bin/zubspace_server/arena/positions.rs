@@ -1279,7 +1279,12 @@ fn accept_position_relay_with_spawn_deferral(
                         reason = rejection.reason(),
                         "weapon edge has no admissible server combat-view binding"
                     );
-                    combat_view_rejection = Some(rejection.reason());
+                    combat_view_rejection = Some(combat_view_block_cause(
+                        state,
+                        player_id,
+                        client_sequence,
+                        rejection,
+                    ));
                     None
                 }
             }
@@ -3983,7 +3988,12 @@ fn consume_stale_weapon_mirror(
                 reason = rejection.reason(),
                 "mirrored weapon edge has no admissible server combat-view binding"
             );
-            weapon_block.combat_view = Some(rejection.reason());
+            weapon_block.combat_view = Some(combat_view_block_cause(
+                state,
+                player_id,
+                client_sequence,
+                rejection,
+            ));
             None
         }
     };
@@ -4092,6 +4102,29 @@ fn consume_stale_weapon_mirror(
         );
     }
     true
+}
+
+/// The most specific reason a weapon has no verified combat view. An
+/// unverified input names its frozen receipt rejection (for example
+/// `combat_view_application_too_far_behind`) when the server recorded one.
+pub(crate) fn combat_view_block_cause(
+    state: &ServerState,
+    player_id: u16,
+    input_sequence: u16,
+    rejection: crate::combat_timeline::ProjectileTimelineBindingRejection,
+) -> &'static str {
+    if rejection != crate::combat_timeline::ProjectileTimelineBindingRejection::UnverifiedInput {
+        return rejection.reason();
+    }
+    state
+        .clients
+        .get(&player_id)
+        .and_then(|client| {
+            client
+                .observer_combat_timeline
+                .receipt_rejection_for_sequence(input_sequence)
+        })
+        .map_or(rejection.reason(), |receipt| receipt.reason())
 }
 
 fn bind_human_projectile_timeline(

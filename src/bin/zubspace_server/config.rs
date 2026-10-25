@@ -1587,6 +1587,37 @@ fn parse_metrics_listen(value: &str) -> Result<Option<std::net::SocketAddr>, Str
 }
 
 #[cfg(test)]
+mod deployed_config_tests {
+    use super::*;
+
+    // A fixed LAN profile draws remote ships 70 ms behind, which a player more
+    // than about 130 ms away cannot be served. Their combat-view receipts age
+    // past the hold grace and every shot is refused as unverified, so the
+    // deployed servers must adapt the delay per connection.
+    #[test]
+    fn deployed_servers_adapt_presentation_delay_per_connection() {
+        for (source, text) in [
+            (
+                "deploy/prod",
+                include_str!("../../../deploy/prod/zubspace_server.toml"),
+            ),
+            (
+                "deploy/dev",
+                include_str!("../../../deploy/dev/zubspace_server.toml"),
+            ),
+        ] {
+            let mut config = ServerConfig::default();
+            config.apply_toml_like_config(text, source).unwrap();
+            assert_eq!(
+                config.observer_network_profile,
+                crate::combat_timeline::ObserverNetworkProfile::AutomaticWan,
+                "{source}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
 mod connection_quality_config_tests {
     use super::*;
     #[test]
