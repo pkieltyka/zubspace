@@ -138,6 +138,36 @@
     };
     return welcome;
   };
+  // This preference changes the guide and hints; both gameplay layouts stay live.
+  global.zubspaceInstallControlsLayout = ({ dialog, footer, storage }) => {
+    const key = "zubspace.controls.layout.v1";
+    const buttons = [...dialog.querySelectorAll(".controls-layouts button")];
+    const valid = value => ["1", "2", "all"].includes(value);
+    const apply = layout => {
+      dialog.dataset.layout = layout;
+      for (const button of buttons) {
+        button.setAttribute("aria-pressed", String(button.dataset.layoutOption === layout));
+      }
+      const hints = layout === "2" ? [["WASD"], [","], ["."]] :
+        layout === "1" ? [["ARROWS"], ["X", "CTRL"], ["Z", "TAB"]] :
+        [["WASD", "ARROWS"], [",", "X", "CTRL"], [".", "Z", "TAB"]];
+      // All markup and labels come from the fixed guide above, never storage.
+      const keys = hints.map(group => group.map(key => `<kbd>${key}</kbd>`).join(" or "));
+      footer.innerHTML = `<span>${keys[0]} to fly</span> <span><span class="controls-separator" aria-hidden="true">·</span> ${keys[1]} for bullets</span> <span><span class="controls-separator" aria-hidden="true">·</span> ${keys[2]} for bombs</span>`;
+    };
+    let initial = "2";
+    try {
+      const saved = storage().getItem(key);
+      if (valid(saved)) initial = saved;
+    } catch { /* Storage may be blocked; Modern remains the default. */ }
+    apply(initial);
+    for (const button of buttons) button.addEventListener("click", () => {
+      const layout = button.dataset.layoutOption;
+      if (!valid(layout)) return;
+      apply(layout);
+      try { storage().setItem(key, layout); } catch { /* Keep the current-page choice. */ }
+    });
+  };
   if (!global.document) return;
   const overlay = document.querySelector("#loading-overlay");
   const canvas = document.querySelector("#menu-stars");
@@ -218,13 +248,11 @@
       dialog.showModal();
     }
   };
-  // The guide lights both keyboard layouts, or just one; the game accepts both.
-  const layoutButtons = [...dialog.querySelectorAll(".controls-layouts button")];
-  const showLayout = event => {
-    dialog.dataset.layout = event.currentTarget.dataset.layoutOption;
-    for (const button of layoutButtons) button.setAttribute("aria-pressed", String(button === event.currentTarget));
-  };
-  for (const button of layoutButtons) button.addEventListener("click", showLayout);
+  global.zubspaceInstallControlsLayout({
+    dialog,
+    footer: document.querySelector(".menu-controls-text"),
+    storage: () => global.localStorage,
+  });
   const controlsOpen = document.querySelector("#controls-open");
   const controlsClose = document.querySelector("#controls-close");
   const credits = document.querySelector("#credits-dialog");

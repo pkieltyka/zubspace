@@ -732,7 +732,8 @@ fair-warning rule (section 7.3).
 Bots differ from players in three ways:
 
 - they steer with their own kinematics, sharing only the collision solver;
-- their fire cooldown is twice the authored delay;
+- AI skill tiers adjust aim, target reaction and fire cadence (2×/3×/4× the
+  authored delay for Hard/Medium/Easy), without changing ship stats;
 - they collect prizes by overlap rather than by claim.
 
 Tactics are in [`gameplay.md`](gameplay.md). `src/bot.rs` is for offline play

@@ -32,7 +32,7 @@ pub(crate) mod timing;
 mod movement_clock;
 pub(crate) use movement_clock::MovementTimeBudget;
 
-pub(crate) use bots::ServerBot;
+pub(crate) use bots::{BotDifficulty, ServerBot};
 #[allow(unused_imports)]
 pub(crate) use client_runtime::{status_inventory_tuning, weapon_inventory_tuning};
 

@@ -47,9 +47,25 @@ pub(super) fn bot_fire_ready(bot: &ServerBot, tick: u32, next_weapon: u16) -> bo
         bot.player.ship,
         (previous & 0x1f) as u8,
     )
-    .saturating_mul(BOT_FIRE_COOLDOWN_MULTIPLIER);
+    .saturating_mul(BOT_FIRE_COOLDOWN_MULTIPLIER + bot.difficulty.cooldown_extra());
     bot.last_fire_tick
         .is_none_or(|last| crate::continuum::continuum_tick_elapsed(tick, last) >= delay)
+}
+
+/// Navigation keeps following the target while easier pilots hesitate to fire.
+pub(super) fn bot_reaction_ready(bot: &mut ServerBot, target: Option<u16>, tick: u32) -> bool {
+    let Some(target) = target else {
+        bot.combat_target = None;
+        return false;
+    };
+    if bot
+        .combat_target
+        .is_none_or(|(previous, _)| previous != target)
+    {
+        bot.combat_target = Some((target, tick));
+    }
+    let (_, acquired) = bot.combat_target.expect("target acquired above");
+    crate::continuum::continuum_tick_elapsed(tick, acquired) >= bot.difficulty.reaction_ticks()
 }
 
 fn bomb_reserve_available(bot: &ServerBot, weapon: u16) -> bool {

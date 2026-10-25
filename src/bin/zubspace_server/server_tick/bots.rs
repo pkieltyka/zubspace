@@ -19,7 +19,7 @@ use crate::zone::{
 mod tactics;
 use tactics::{
     bot_bomb_safety_blocked, bot_combat_weapon, bot_fire_ready, bot_launch_velocity,
-    bot_tactical_orbit_radius,
+    bot_reaction_ready, bot_tactical_orbit_radius,
 };
 
 // Continuum presents 40 discrete headings (9 degrees apart). Wait until the
@@ -414,6 +414,11 @@ pub(super) fn step_server_bots(
         let protected_target_orbiting = target.player_id.is_some()
             && target.in_safe_zone
             && direct_target_distance <= BOT_COMBAT_PURSUIT_DISTANCE;
+        let reaction_ready = bot_reaction_ready(
+            bot,
+            target.player_id.filter(|_| !target.in_safe_zone),
+            server_tick,
+        );
         let combat_aiming = target.player_id.is_some()
             && !target.in_safe_zone
             && combat_aim_phase(bot, server_tick);
@@ -730,6 +735,7 @@ pub(super) fn step_server_bots(
         let energy =
             crate::authority::EnergyPool::new(bot.energy, bot.max_energy, bot.energy_remainder);
         if in_range
+            && reaction_ready
             && aim > BOT_AIM_ALIGNMENT
             && ready
             && !bot.shutdown_active(server_tick)
@@ -1044,6 +1050,7 @@ fn spawn_bot_weapon(state: &mut ServerState, tick: u32, mut fire: PendingBotFire
     state.note_owner_weapon_group(event);
     tracing::debug!(
         event = "bot_weapon_committed",
+        difficulty = state.bot(fire.bot_id).map(|bot| bot.difficulty.label()),
         server_tick = tick,
         owner_id = fire.bot_id,
         owner_life_seq = fire.life_seq,
@@ -1345,6 +1352,33 @@ fn bot_bullet_intercept_target(bot: &crate::state::ServerBot, target: BotTarget)
 }
 
 fn bot_weapon_intercept_target(
+    bot: &crate::state::ServerBot,
+    target: BotTarget,
+    weapon_data: u16,
+) -> BotTarget {
+    let exact = bot_exact_weapon_intercept_target(bot, target, weapon_data);
+    let fraction = bot.difficulty.lead_fraction();
+    if bot.difficulty == crate::state::BotDifficulty::Hard {
+        return exact;
+    }
+    let dx = target.x + (exact.x - target.x) * fraction - bot.x;
+    let dy = target.y + (exact.y - target.y) * fraction - bot.y;
+    // Smooth four-second aim drift, staggered per pilot and life. It changes
+    // intent before steering/firing, never the projectile after launch. No
+    // per-tick randomness, aim teleport or bypass of the normal facing gate.
+    let phase = (bot.last_step_tick % 400) as f32 / 400.0 * std::f32::consts::TAU
+        + f32::from(bot.player.id) * 0.73
+        + (bot.life_seq % 100) as f32 * 0.41;
+    let error = phase.sin() * bot.difficulty.aim_error_degrees().to_radians();
+    let (sin, cos) = error.sin_cos();
+    BotTarget {
+        x: bot.x + dx * cos - dy * sin,
+        y: bot.y + dx * sin + dy * cos,
+        ..target
+    }
+}
+
+fn bot_exact_weapon_intercept_target(
     bot: &crate::state::ServerBot,
     target: BotTarget,
     weapon_data: u16,
@@ -4020,6 +4054,123 @@ mod tests {
         };
         let compensated_target = bot_bullet_intercept_target(bot, moving_target);
         assert!(compensated_target.y > moving_target.y);
+    }
+
+    #[test]
+    fn difficulty_changes_accuracy_without_changing_projectile_physics() {
+        use crate::state::BotDifficulty::{Easy, Hard, Medium};
+        let (mut state, _) = bot_energy_fixture(0, 1);
+        let bot = &mut state.bots[0];
+        bot.x = 1000.0;
+        bot.y = 1000.0;
+        bot.velocity_x = 0.0;
+        bot.velocity_y = 0.0;
+        let target = BotTarget {
+            player_id: Some(7),
+            frequency: Some(1),
+            x: 1300.0,
+            y: 1000.0,
+            velocity_x: 0.0,
+            velocity_y: 0.0,
+            in_safe_zone: false,
+            status: 0,
+        };
+        let weapon = bot.gun_weapon_data().unwrap();
+        let original_tuning =
+            crate::arena_settings::arena_projectile_initialization_tuning(bot.player.ship);
+        let mut errors = [0.0_f32; 3];
+        for tick in 0..400 {
+            bot.last_step_tick = tick;
+            for (index, tier) in [Hard, Medium, Easy].into_iter().enumerate() {
+                bot.difficulty = tier;
+                let aim = super::bot_weapon_intercept_target(bot, target, weapon);
+                let angle = (aim.y - bot.y).atan2(aim.x - bot.x).abs().to_degrees();
+                assert!(angle <= tier.aim_error_degrees() + 0.001);
+                errors[index] += angle;
+                assert!(((aim.x - bot.x).hypot(aim.y - bot.y) - 300.0).abs() < 0.01);
+            }
+        }
+        assert_eq!(errors[0], 0.0);
+        assert!(errors[1] > 100.0 && errors[2] > errors[1] * 2.0);
+        bot.difficulty = Hard;
+        let moving = BotTarget {
+            velocity_y: 150.0,
+            ..target
+        };
+        let exact = super::bot_exact_weapon_intercept_target(bot, moving, weapon);
+        let hard = super::bot_weapon_intercept_target(bot, moving, weapon);
+        assert_eq!((hard.x, hard.y), (exact.x, exact.y));
+        assert!(exact.y > moving.y);
+        for tier in [Medium, Easy] {
+            bot.difficulty = tier;
+            let aim = super::bot_weapon_intercept_target(bot, moving, weapon);
+            let expected = (moving.x + (exact.x - moving.x) * tier.lead_fraction() - bot.x)
+                .hypot(moving.y + (exact.y - moving.y) * tier.lead_fraction() - bot.y);
+            assert!(((aim.x - bot.x).hypot(aim.y - bot.y) - expected).abs() < 0.01);
+        }
+        let current_tuning =
+            crate::arena_settings::arena_projectile_initialization_tuning(bot.player.ship);
+        assert_eq!(original_tuning.bullet_speed, current_tuning.bullet_speed);
+    }
+
+    #[test]
+    fn difficulty_reaction_delay_resets_on_new_target_and_respawn_across_tick_wrap() {
+        use crate::state::BotDifficulty::{Easy, Hard, Medium};
+        let (mut state, _) = bot_energy_fixture(0, 1);
+        let bot = &mut state.bots[0];
+        for tier in [Hard, Medium, Easy] {
+            bot.difficulty = tier;
+            for start in [100, crate::continuum::CONTINUUM_TICK_MASK - 10] {
+                bot.combat_target = None;
+                assert_eq!(super::bot_reaction_ready(bot, Some(9), start), tier == Hard);
+                let delay = tier.reaction_ticks();
+                if delay > 0 {
+                    assert!(!super::bot_reaction_ready(
+                        bot,
+                        Some(9),
+                        crate::continuum::continuum_tick_add(start, delay - 1)
+                    ));
+                }
+                let ready = crate::continuum::continuum_tick_add(start, delay);
+                assert!(super::bot_reaction_ready(bot, Some(9), ready));
+                assert_eq!(
+                    super::bot_reaction_ready(bot, Some(10), ready),
+                    tier == Hard
+                );
+                assert!(!super::bot_reaction_ready(bot, None, ready));
+                bot.reset_loadout_at_tick(ready);
+                assert_eq!(bot.difficulty, tier);
+                assert_eq!(bot.combat_target, None);
+            }
+        }
+    }
+
+    #[test]
+    fn all_difficulties_obey_ship_cooldowns_and_weapon_energy_costs() {
+        use crate::state::BotDifficulty::{Easy, Hard, Medium};
+        for ship in 0..8 {
+            for tier in [Hard, Medium, Easy] {
+                let (mut state, mut fire) = bot_energy_fixture(ship, 1);
+                state.bots[0].difficulty = tier;
+                let gun = state.bots[0].gun_weapon_data().unwrap();
+                fire.weapon_data = gun;
+                let cost = crate::arena_settings::arena_ship_weapon_energy_cost(ship, gun);
+                let before = state.bots[0].energy;
+                spawn_bot_weapon(&mut state, 100, fire);
+                assert_eq!(state.bots[0].energy, before - cost);
+                let delay = crate::arena_settings::arena_ship_weapon_fire_delay_ticks(
+                    ship,
+                    (gun & 31) as u8,
+                ) * (super::BOT_FIRE_COOLDOWN_MULTIPLIER + tier.cooldown_extra());
+                let charged = state.bots[0].energy;
+                spawn_bot_weapon(&mut state, 100 + delay - 1, fire);
+                assert_eq!(state.bots[0].energy, charged);
+                assert_eq!(state.bots[0].last_fire_tick, Some(100));
+                spawn_bot_weapon(&mut state, 100 + delay, fire);
+                assert_eq!(state.bots[0].energy, charged - cost);
+                assert_eq!(state.bots[0].last_fire_tick, Some(100 + delay));
+            }
+        }
     }
 }
 

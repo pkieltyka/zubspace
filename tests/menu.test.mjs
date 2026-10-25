@@ -172,3 +172,42 @@ test('first-play persistence is triggered by gameplay readiness rather than load
   assert.equal(marks,1);
   assert.equal(updates,2);
 });
+
+test('controls default to Modern and remember every guide choice across page loads', () => {
+  const saved = new Map();
+  const storage = () => ({ getItem: key => saved.get(key), setItem: (key, value) => saved.set(key, value) });
+  function guide(access = storage) {
+    const buttons = ['all', '1', '2'].map(layout => {
+      const button = new EventTarget();
+      button.dataset = { layoutOption: layout };
+      button.setAttribute = (key, value) => { button[key] = value; };
+      return button;
+    });
+    const dialog = { dataset: {}, querySelectorAll: () => buttons };
+    const footer = {};
+    scope.zubspaceInstallControlsLayout({ dialog, footer, storage: access });
+    return { dialog, footer, buttons };
+  }
+  let current = guide();
+  assert.equal(current.dialog.dataset.layout, '2');
+  assert.equal(current.buttons[2]['aria-pressed'], 'true');
+  assert.match(current.footer.innerHTML, /WASD/);
+  assert.match(current.footer.innerHTML, /<kbd>,<\/kbd> for bullets/);
+  assert.match(current.footer.innerHTML, /<kbd>\.<\/kbd> for bombs/);
+  for (const layout of ['1', 'all', '2']) {
+    current.buttons.find(b => b.dataset.layoutOption === layout).dispatchEvent(new Event('click'));
+    current = guide();
+    assert.equal(current.dialog.dataset.layout, layout);
+    assert.equal(current.buttons.filter(b => b['aria-pressed'] === 'true').length, 1);
+    assert.equal(current.buttons.find(b => b.dataset.layoutOption === layout)['aria-pressed'], 'true');
+    assert.match(current.footer.innerHTML, layout === '1' ? /ARROWS/ : /WASD/);
+    assert.doesNotMatch(current.footer.innerHTML, /<kbd>\/<\/kbd>/, 'Slash is Repel, never a bullet/bomb hint');
+    if (layout !== '2') assert.match(current.footer.innerHTML, /<\/kbd> or <kbd>/);
+  }
+  saved.set('zubspace.controls.layout.v1', '<invalid>');
+  assert.equal(guide().dialog.dataset.layout, '2');
+  const blocked = guide(() => { throw Error('storage blocked'); });
+  assert.equal(blocked.dialog.dataset.layout, '2');
+  blocked.buttons[0].dispatchEvent(new Event('click'));
+  assert.equal(blocked.dialog.dataset.layout, 'all');
+});
