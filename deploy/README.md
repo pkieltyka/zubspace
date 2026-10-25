@@ -86,6 +86,7 @@ make remote-status                       # per environment: commit, players, ses
 make remote-history                      # deploys.log of both environments
 make remote-logs-prod                    # follow the server log (dev: logs/server.log)
 make remote-logs-dev SERVICE=cloudflared FOLLOW=0 TAIL=50
+make remote-sessions-prod HOURS=24        # each player session, then RTT bands, fps and refused shots
 make remote-restart-prod SERVICE=server  # without SERVICE: every service
 make remote-shell                        # ssh into ~/zubspace
 ```

@@ -269,6 +269,7 @@ make rollback-prod              # prod's previous recorded deploy (also rollback
 make remote-status              # commit, total players, sessions, containers, disk for both
 make remote-history             # recorded deploys
 make remote-logs-dev FOLLOW=0   # server log tail; SERVICE=client|cloudflared|prometheus
+make remote-sessions-prod       # one line per player session (HOURS=24), then RTT/fps/shot totals
 make remote-restart-dev         # restart without redeploying; SERVICE=<one>
 make probe-prod                 # join check alone
 make deploy-notifier            # the Slack join/leave notifier (notifier/), its own project;

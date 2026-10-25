@@ -32,9 +32,12 @@ log_file = ""
 # Scraped by this environment's Prometheus (deploy/prod/prometheus.yml).
 metrics_listen = "127.0.0.1:9100"
 
-quality_max_rtt_ms = 600
+# Tighter than the built-in 600/400 ms (docs/connection-quality.md): a player
+# whose probe RTT stays at 400 ms for 10 s spectates for a minute and returns
+# below 300 ms. The HUD ping turns yellow at 150 ms and red at 300 ms.
+quality_max_rtt_ms = 400
 quality_max_loss_per_mille = 150
-quality_recovery_rtt_ms = 400
+quality_recovery_rtt_ms = 300
 quality_recovery_loss_per_mille = 100
 
 enable_objectives = false

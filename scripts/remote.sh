@@ -4,6 +4,7 @@
 #   scripts/remote.sh status                    # both environments and the host
 #   scripts/remote.sh history [prod|dev]        # recorded deploys, newest last
 #   scripts/remote.sh logs <prod|dev> [service] # server (default), client, cloudflared, prometheus; or logs notifier
+#   scripts/remote.sh sessions <prod|dev>       # one line per player session, then totals
 #   scripts/remote.sh restart <prod|dev> [service]
 #   scripts/remote.sh shell                     # interactive shell in ~/zubspace
 #   scripts/remote.sh prometheus                # forward both Prometheus UIs
@@ -14,10 +15,11 @@
 #   ZUBSPACE_DEPLOY_FORCE  1 restarts prod even with players online
 #   ZUBSPACE_LOG_FOLLOW    0 prints the log tail and exits (default 1 follows)
 #   ZUBSPACE_LOG_LINES     lines of history before following (default 200)
+#   ZUBSPACE_SESSION_HOURS hours of sessions to summarize (default 24)
 set -euo pipefail
 
 usage() {
-  sed -n '4,9s/^#   //p' "$0" >&2
+  sed -n '4,10s/^#   //p' "$0" >&2
   exit 2
 }
 host=${ZUBSPACE_DEPLOY_HOST:-peter@zubspace-prod}
@@ -93,6 +95,31 @@ EOF
     else
       remote "podman logs --tail $lines $follow_journal zubspace-$env-$service-1"
     fi
+    ;;
+  sessions)
+    need_env "${2:-}"
+    env=$2
+    since=$(date -u -d "-${ZUBSPACE_SESSION_HOURS:-24} hours" +%Y-%m-%dT%H:%M:%SZ)
+    # Each removed player session logs one `session_summary` line
+    # (docs/observability.md). Dev logs to a rotated file, prod to the journal.
+    if remote "test -s ~/zubspace/$env/logs/server.log"; then
+      remote "cat ~/zubspace/$env/logs/server.log.1 ~/zubspace/$env/logs/server.log 2>/dev/null \
+        | grep -F '\"session_summary\"' || true"
+    else
+      remote "podman logs --since $since zubspace-$env-server-1 2>&1 | grep -F '\"session_summary\"' || true"
+    fi | jq -rs --arg since "$since" '
+      def n(f): (f // 0) * 10 | round / 10;
+      # Server probe RTT, else the browser ICE RTT; null when never measured
+      # (a browser can report 0 before its first ICE measurement).
+      def rtt: [.probe_rtt_ms_mean, .ice_rtt_ms_mean] | map(select(. != null and . > 0)) | first;
+      def band(lo; hi): [.[] | rtt as $r | select($r != null and $r >= lo and $r < hi)] | length;
+      [.[] | select(.timestamp >= $since) | .fields + {at: .timestamp[5:16]}
+        | select(.name | test("^probe[0-9]+$") | not)] as $s
+      | "\($s | length) player sessions since \($since) (deploy probes excluded)",
+        ($s[] | "\(.at)  \(.name)  \(.duration_s)s  \(if .ship >= 8 then "spectator" else "ship \(.ship + 1)" end)  K/D \(.kills)/\(.deaths)  \(n(.fps_mean)) fps  slow \(.slow_frames)  corrections \(.corrections)  rtt \(rtt // "-" | if type == "number" then "\(round) ms" else . end)  snap-backs \(.snapbacks)  shots \(.weapons_fired) fired, \(.weapons_rejected) refused (\(.weapons_rejected_combat_view) unverified view)"),
+        "rtt: \($s | band(0; 80)) under 80 ms, \($s | band(80; 150)) 80-149, \($s | band(150; 300)) 150-299, \($s | band(300; 1e9)) 300+, \([$s[] | select(rtt == null)] | length) unmeasured",
+        "under 55 fps: \([$s[] | select(.fps_mean != null and .fps_mean < 55)] | length); with snap-backs: \([$s[] | select(.snapbacks > 0)] | length)",
+        "shots: \([$s[].weapons_fired] | add // 0) fired, \([$s[].weapons_rejected] | add // 0) refused, \([$s[].weapons_rejected_combat_view] | add // 0) of them for an unverified view"'
     ;;
   restart)
     need_env "${2:-}"

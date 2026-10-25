@@ -725,11 +725,12 @@ SERVICE ?=
 FOLLOW ?= 1
 TAIL ?= 200
 DEPLOY = ZUBSPACE_DEPLOY_FORCE=$(FORCE) scripts/deploy.sh
-REMOTE = ZUBSPACE_DEPLOY_FORCE=$(FORCE) ZUBSPACE_LOG_FOLLOW=$(FOLLOW) ZUBSPACE_LOG_LINES=$(TAIL) scripts/remote.sh
+HOURS ?= 24
+REMOTE = ZUBSPACE_DEPLOY_FORCE=$(FORCE) ZUBSPACE_LOG_FOLLOW=$(FOLLOW) ZUBSPACE_LOG_LINES=$(TAIL) ZUBSPACE_SESSION_HOURS=$(HOURS) scripts/remote.sh
 AFTER_DEPLOY = $(if $(filter 1,$(PROBE)),$(MAKE) --no-print-directory probe-$(1))
 .PHONY: deploy-dev deploy-prod promote-prod rollback-dev rollback-prod probe-dev probe-prod \
 	deploy-notifier remote-status remote-history remote-logs-dev remote-logs-prod remote-logs-notifier \
-	remote-restart-dev remote-restart-prod remote-shell remote-prometheus
+	remote-sessions-dev remote-sessions-prod remote-restart-dev remote-restart-prod remote-shell remote-prometheus
 deploy-dev deploy-prod: deploy-%:
 	$(DEPLOY) $* "$(REF)"
 	$(call AFTER_DEPLOY,$*)
@@ -765,6 +766,10 @@ remote-history:
 # SERVICE=client|cloudflared|prometheus (default server); FOLLOW=0 prints and exits.
 remote-logs-dev remote-logs-prod remote-logs-notifier: remote-logs-%:
 	$(REMOTE) logs $* $(SERVICE)
+
+# One line per player session over the last HOURS (default 24), then totals.
+remote-sessions-dev remote-sessions-prod: remote-sessions-%:
+	$(REMOTE) sessions $*
 
 # Restarts every service, or only SERVICE, without redeploying.
 remote-restart-dev remote-restart-prod: remote-restart-%:

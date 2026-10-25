@@ -166,6 +166,9 @@ The four thresholds are in the `[server]` section of
 The probe interval, 30 s window, 20-outcome minimum, 10 s sustain times and
 60 s hold are fixed.
 
+Our prod and dev servers set `quality_max_rtt_ms = 400` and
+`quality_recovery_rtt_ms = 300` (`deploy/<env>/zubspace_server.toml`).
+
 ## Observability
 
 - **`/v1/status` → `connection_quality`**: current sessions, measured sessions,

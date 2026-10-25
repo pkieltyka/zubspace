@@ -71,7 +71,8 @@ impl SessionSummary {
         self.slow_frames += u64::from(slow_frames);
         self.worst_frame_us = self.worst_frame_us.max(worst_frame_us);
         self.corrections += u64::from(corrections);
-        if let Some(rtt) = ice_rtt_us {
+        // A browser can report 0 before its first ICE measurement.
+        if let Some(rtt) = ice_rtt_us.filter(|&rtt| rtt > 0) {
             self.ice_rtt_us_total += u64::from(rtt);
             self.ice_rtt_samples += 1;
             self.ice_rtt_us_max = self.ice_rtt_us_max.max(rtt);
