@@ -1,0 +1,603 @@
+Continuum 0.40
+--------------
+
+* added additional anti-cheating checks
+* edited for better compatibility with Windows XP and Vista
+
+Continuum 0.39
+--------------
+
+* Test version
+
+Continuum 0.39pr1
+-----------------
+
+* fixed proximity bomb bug introduced in 0.38
+* fixed crash in some systems few seconds after entering zone
+
+
+Continuum 0.38
+--------------
+
+Gameplay
+* added support for specifying spawn location and radius per team is settings
+* added server option to disable passing ball through wall
+* added server option to disable catching ball when stating still in 
+  safezone to eliminate "ball killing"
+* added support for new configuration variable Misc:AntiWarpSettleDelay which
+  will activate artificial anti-warp for given amount of time after attching,
+  portaling and warping. This should fix "getting past anti" bug in flagging
+  zones
+* added support for multi-server zones
+* added support for negative gravity
+* fixed ball remaining in phased out state for long periods of time
+* fixed removing of powerballs from arena
+* fixed point blank bomb shrapnel doing full damage, istead of inactive
+  shrapnel damage as it is supposed to
+* fixed driver stealthing entire turret
+* fixed crash when somebody attaches you at same moment when you go to
+  spectator mode
+
+User Interface
+* fixed auto commands not beeing sent when there is not any chats in profile
+* fixed character keys not working as PREV/NEXT key in menus
+* fixed arena list not working with many areas (50+)
+* moved first 2 previously hardcoded help pagas into Commands.hlp so they can
+  be changed too by including Commands.hlp to lvz file
+* fixed attach, tick next and tick previous actions not working with joystick
+
+Graphics
+* added support for GIF, PNG and JPG files in addition to BMP. This should help
+  reduce lvz file size
+* reworked lvz loading logic. image, audio and help files and now loaded
+  directly from lvz file instead of extracting all files and saving to disk.
+  files are now loaded in following order: 1. zonedir\arenaname (arenaname 
+  (public) can be used for main spawn), 2. active lvz files, 3. zonedir, 
+  4. graphics/sound dir, 5. Continuum dir. 
+* added support for 16, 24 and 32-bit display modes
+* added support for aligning screen objects with various screen elements 
+  (stats box, energy bar, specials, weapons, radar, chat). See BuildLevel
+  docs and examples for details
+* added configurable colors. Background color, menu colors, radar colors
+  are now read from colors.bm2
+* added advanced option 'Always show common resolutions'. Checking this makes 
+  800x600, 1024x768, 1200x1024, 1600x1200, 1920x1440 and 2048x1536 modes 
+  available for selecting even if DirectDraw says that these are not supported.
+  Useful when DirectDraw detects your monitor maximum resolution wrong.
+* added advanced option 'Disable clipping'. Use this when you have problems
+  with tasking in and out in fullscreen mode
+* added support for lvz objects in multiple lvz files. In earlier versions only
+  objects from last lvz where used
+* added support for *objset command with multiple objects
+* fixed loading of shipX graphics from lvz
+* fixed freeing of lvz sprites when changing arenas
+* fixed gradient.bm2 beeing not re-loaded
+* fixed radar lining images transparency
+* fixed "holes" in radar at high resolutions and made scrolling smoother
+* fixed "move object" packet handling
+* fixed thor explosions not showing on the radar
+* fixed graphics not beeing displayed after tasking out
+* fixed graphics beeing reloaded twice after tasking in, causing low-end
+  computers to lag out during that process
+* fixed level and screen objects not showing up when changing arena while in
+  chat window
+* fixed zone setting Frequency shift 0 crashing Continuum
+* fixed ship name displaying when ships with different sizes attached to 
+  eachother
+
+Menu/Chat
+* fixed menu window was creeping up/left each run if task bar was at 
+  left/top of display
+* fixed menu not showing some ships when using mixed ships.bm2 and
+  ship#.bm2
+* ignore left button while in right-click zone info mode, and remove state
+  if focus lost
+* zone pings showed invalid spike after zone/proxy dialogs because of old
+  packets sitting in network buffer
+* fixed " #" in chat showing in blue instead of green
+* don't flash chat for 5 seconds upon opening to avoid flash for existing
+  text
+* rare crash on menu close fixed
+* added web links, news, help, banner editor to chat menu
+* fixed bug with passwords having non-ascii chars
+* fixed macros not showing right in chat/edit dialog if they have been
+  changed in game
+* numeric zone ping now shows lowest of last 8 pings, not average
+* edit chats feature in chat window (Ctrl-H)
+* added find support to chat with advanced options for message types
+* ability to add custom zones
+* improved menu/skin draw speed and loading of custom ships
+* improved URL detection
+* support optional chatbg.bm2 for chat window background (graphics/ or
+  zones/<zone>/)
+* fixed web links and help menu URLs
+* removed all accesses to resource.dll from menu
+* fixed bug in skins drawing animations for many regions
+* fixed minor mouse cursor bug in banner editor
+* added color depth to menu and profiles
+* added "show default resolution" and "disable clipping" to advanced graphics
+  options
+
+Sound
+* fixed not beeing able to set music volume to higher after setting it once
+
+Misc
+* fixed zone setting BounceFactor 0 crashing Continuum
+* fixed frequent 'Packet tampering' server messages caused by incorrect retry
+  handling when packet got lost during initial handshake
+* added support for hashed passwords
+* better timer synchronization with server
+* fixed Continuum not starting sometimes when clicked on icon
+* added asss support
+
+Continuum 0.37
+--------------
+
+Gameplay
+* made ship radius part of server ship settings so it is possible to make ship 
+  that squeezes through 1 tile wide hole or a capital ship with size 5x5 tiles 
+  (you can also make appropriate graphics for it using graphics download 
+  functionality)
+* fixed bug that allowed laying portal right after attaching even if enemy has
+  antiwarp engaged 
+* fixed bug in simulation code that caused ship to jump back after long
+  screenlag period (for example, using PrintScreen no longer makes you lag on
+  other player's screens)
+* fixed drawing of "lagged" or "phased" ball (.36 did not draw phased ball at 
+  all)
+* changed the amount of time a ball stays "lagged/phased" from 3 seconds to 1
+* fixed ball movement glitch on map when ball goes outside of radar range
+* removed weapon fire/warp delay after passing with Insert key
+* fixed turrets falling apart if several people attached at same time making
+  turret bigger than allowed
+* fixed bombs hitting the spot a player specced from, fixed not being able to 
+  fire bombs in spot player specced from
+* fixed /*warpto safe zone
+* fixed energy deplete prize sent by moderator which did not work (*prize #-13)
+* made flagger/baller decoy behaviour compatible with SS 1.3x (baller decoy no 
+  longer red)
+* fixed multifire bullets when one turret is blocked and ship is touching wall
+* fixed proximity bomb safety radius which was slightly smaller than VIE
+* fixed turrets consisting of people from different teams when driver reenters
+  arena
+* fixed crash when doing /*warpto to spectator
+* fixed bug with decoys standing still beeing counted as mines
+* you can no longer be warped during death timer
+* support for more (Public) arenas
+
+Graphics
+* added functionality to download custom graphics, sounds and help files with
+  level file per zone or arena (View -> Options -> Misc -> Use Optional Level 
+  Graphics and Sounds) through use of *.lvz files
+* ship graphics loaded from ship1.bm2 - ship8.bm2 to allow different ship
+  sizes. If these files are not present ships.bm2 is used for backward
+  compatibility
+* added map graphics objects. map designers can place any image (also animated
+  images) anywhere on the map now, so map design is not limited by tileset. 
+  further more, these graphics objects can be attached to certain events (enter 
+  zone, enter arena, death, kill) or commands issued by moderators. it is also 
+  possible to move these objects around using bots
+* added screen graphics objects. screen graphics objects are similar to map
+  graphics objects, only they are not on the map, but on user's screen. some 
+  ideas for screen objects: arrow pointing to enemy with flags, powerball, etc, 
+  controlled by bot; clock showing time till end of league game, splash screen 
+  when you enter zone
+* added green-line coordinate grid to radar (optional in View -> Options -> 
+  Radar -> Show Radar Grid)
+* fixed screenshot funcionality (PrintScreen)
+* fixed burst trails (which were not diplayed in .36)
+* fixed visual bug of thors disappearing at level edge
+* fixed frequent DirectDraw error when reentering zone
+* fixed goal tile animation speed
+* max number of flyunder tiles displayed is unlimited now
+* asteroids and wormholes are drawn with black transparency now
+* rolling ship is now displayed when rolling ship graphics is in same 
+  directory as regular ship graphics
+* corrected thrust output position when rolling ship is disabled
+* fixed banner palette when setting banner
+* fixed windows PrintScreen functionality when tasked out
+* fixed problem with maps with > 10x compression ratio
+* fixed ship disappearing when decloaking
+* fixed some sprites not displayed after tasking out and in
+* fixed various color palette bugs, incorrect tile graphics displayed, and 
+  invisible tiles bug
+* fixed various bugs and crashes when changing graphics or sounds in-game
+
+Chat
+* added 2 new fonts Large and Extra large (View -> Options -> Chat -> Font 
+  Style, thanks to ZippyDan for graphics)
+* added command ?nopubchat. it toggles displaying of public (blue) chat on 
+  and off.  useful for league games
+* added international character support (öäõü etc - also ZippyDan)
+* help menu texts and help ticker texts are optionally downloaded from server,
+  so they can be customized for zones
+* added option to require message key to be able to chat (View -> Key Defs ->
+  Require Msg Key).  useful so you dont accidentally enter message mode
+* increased chat window history length from 128 to 1,000 lines (applies to 
+  ?logbuffer too), so you can scroll back much farther
+* fixed ` key handling problems
+* fixed ignoring of players with )> in name
+* empty *arena messages are not displayed - moderator bongs no longer make a 
+  blank space
+* fixed dedupe messages so it now works ignoring duplicate messages (View -> 
+  Chat -> No Duplicate Messages)
+* fixed ;9999999999999; not to show random numbers
+* fixed problem with Enter beeing message mode key
+* fixed empty lines in help ticker
+* added ability to use %% to send %
+* fixed ignoring of leading spaces when determining chat color
+
+User Interface
+* reorganized options menu so it is easier to find options and renamed some
+  options so that they are more easily understood
+* added joystick/gamepad buttons configuration (View -> Key Defs -> 
+  Joystick/Gamepad)
+* added support for configurable ship names and ship graphics in main menu 
+  and in-game so each zone can rename and describe its own ships abilities
+* fixed joystick/gamepad incompatibility problems under Windows XP
+* fixed Alt-Tab firing bombs
+* made pageup/down and shift-pageup/down to open player list
+* added option to remove banner (Esc + B, scroll to bottom of banner list)
+* added option to activate Chat Window in Windowed mode and to disable chat 
+  window in options (View -> Options -> Chat -> Chat Window).  Now you can
+  copy text and click links if you use Windowed mode!
+* added "auto-execute" commands functionality to profiles (View -> Profiles 
+  -> Auto) that lets you auto-send chat/commands every time you login.  Use
+  \ to indicate a new line of chat.
+* added option for all users to see other players' ping times (View -> Options 
+  -> Misc -> Player Ping Times, this was previously moderator-only feature, 
+  note that it is roundtrip time!)
+* added functionality for moderators to view a player's real-time weapons 
+  damage (/*watchdamage)
+* added server option to disable PrintScreen while playing
+* fixed bug when changing arenas while map download was in progress
+* added detection of Continuum infected by virus, so players won't get the
+  "you need to uprade" message when they have already upgraded which is 
+  caused by many viruses
+* fixed AntiWarp engaged by .. text if there is % in the name
+* F11 will reenter to last ship used instead of always entering as Warbird
+* opposite arrows will cancel each other out when scrolling in spec mode
+* using shift-F5 macro no longer specs ball in spec mode
+* completely new alt-tab Chat Window code
+* added scroll-bar to chat window
+* added clickable URL links and emails to chat window (links -http,https,ftp,
+  email- are underlined).  Clicking on links/emails will open new default 
+  browser window or default email client at clicked address
+* added highlighter to chat window that can be used for copying very large 
+  or small portions of text as you want- just like in a word processor (can 
+  modify selection color Edit -> Selection Color)
+* red arrow in chat window shows when new messages received when scrolled up
+* added "standard" keyboard and mouse support including: up, down, left, right, 
+  pgup, pgdn, home, end, ctrl-home, ctrl-end; shift with above selects text, 
+  left button click sets caret; left button drag selects; mouse wheel scrolls; 
+  wraps at commas in additions to spaces; can select font/size/bold, 
+  increase/decrease/bold font with keystroke
+* can change chat window font and style (Edit -> Font)
+* copy (Ctrl-C) in chat window without selection copies entire current line as 
+  in .36
+* ESCAPE puts cursor back into edit field, deselects and snaps text back to 
+  bottom
+* TAB toggles between edit and text windows
+* up/down in edit field moves cursor to bottom line of text
+* chat player list selection stays visible as players come and go
+* fixed buffer overflow for long private message from a player with a long name
+* moved player passwords to registry
+* added zone dns name fix for corrupted zone.dat files
+* fixed a number of small resource leaks in the menu and chat window
+* fixed problem pasting text with CR/LF
+* added simple banner editor (View -> Create/Edit Banners, hold CTRL for 
+  eyedropper)
+* fixed chat window not showing sometimes after alt-tab
+* added more skin features for developers
+* menu can optionally display default ships for each zone as zone selection 
+  changes (View -> Options -> Menu -> Zone-specific Ships).  This option is
+  left off by default because it can degrade menu performance
+* holding mouse over ping column on zone list now shows packet loss
+* zone download dialog re-vamped and shows what zone properties changed -if any 
+  (ip, port, name, etc) after a download (View -> Zones)
+* fixed some potential mouse wheel problems
+* added tip-of-the-day (Help -> Tip of the Day)
+* added ability to change macros in chat window (Macros -> Edit)
+* added right-click menu to Continuum on taskbar
+* added chat window icon flash on taskbar when a private message is received
+* fixed window focus problem when 'skip splash screen' is selected
+* added target bounty to player profiles (View -> Profile -> Target)
+* fixed activation of chat window when no other top-level windows present
+* added news.txt viewing for each zone in main menu (Weblinks & News) 
+* added export text file feature to trace dialog (View -> Trace -> Export)
+* title.dat now applies to main menu and program window
+* added saving of f3 name tag status (all name tags off is not saved)
+* fixed refresh bug when changing macro/key def/profile names
+* all macros/keydefs/profiles required to have unique names now
+* fixed a bug where skin selection was not saved
+* added several checks to make sure players have working dirser address
+* pressing f2 in chat window changes player sort as it does in-game
+* better handling of zone pings when there's a lot of zones in list
+* added menutext.bm2 which main menu uses for font
+* fixed always displaying chat window at last position
+* added wav file size limit for sound macros
+
+Sound
+* added support for team sounds. Players can play sounds %150 - %255 in team
+  chat, zone sysops can upload these sounds in lvz file
+* up to 5 bong sounds can be played in parallel instead of previous 1
+* fixed sending voice messages
+* fixed bug with sending wav macros to clients that werent accepting wavs
+* fixed bource.wa2 misnamed file
+* some fixes to 3d sound (View -> Options -> Sound -> 3D Sound Effects)
+
+Communications
+* added SOCKS5 proxy support
+* fixed incompatibility with some cable modems / non-standard TCP/IP stacks
+* fixed security checksum not returned error
+
+
+Continuum 0.36
+--------------
+
+Gameplay
+* down arrow has now priority over up arrow
+* enemy team decoys doesnt make sound when released anymore
+* mines (and all other weapons) are removed when player leaves arena
+* portal is removed when changing team
+* bomb with bouce count 1 bounced from corner is shown using non-bouncing bomb 
+  shape
+* fixed BombSafety setting
+* prizes are not generated after user gets disconnected
+* added waepon fire delay after shooting ball with Ins
+* sounds are stopped when changing arenas
+* fixed problems with shift keys getting stuck when WM_KEYUP message is lost
+* made mines 2/3 darker on radar
+* added server option to disable shooting while using afterburners
+* added server option for showing bombs on radar
+* added server option to hide flags for spectators
+* added server option to disable xradar in spec
+* added server option to disable random bullet damage
+* added server option to specify low fps limit
+
+Chat/Menus/Misc
+* changed screenshot key to PrintScreen
+* fixed typo Sealth -> Stealth in text weapons display
+* when trying to change to team that is full, 'Team is full' message is 
+  displayed
+* rest of the macros are cleared out if macro file contains only few macros
+* when downloading level chat and names box is displayed
+* double-click on player name in chat window sets focus to edit
+* fixed player name list scrolling to top when it is changed in chat window
+* fixed security checksum not returned while downloading level
+* added arena list sorting
+* added banner list sorting
+
+DirectDraw/DirectSound
+* fixed problem that mouse cursor was blinking on screen in fullscreen mode 
+  on some systems
+* fixed memory leak when locking workstation using Windows 2000
+* fixed windowed mode not working with some video cards with 32bit desktop 
+  mode
+* added DirectDraw troubleshooting options (Advanced options) by default 
+  all options should be OFF in there
+* when Refresh in profile is set up <default> DirectDraw interface is used
+  for compatibility instead of DirectDraw2 interface
+* added Sound Quality option "Default". With this option sound card is 
+  left to cooperative mode, so sounds of other applications such as WinAmp 
+  are audiable too (works only if your sound card drivers support it)
+
+Profile/Skins/Zone list
+* increased player name length to 23 characters
+* fixed unassigned macro keys blocking usage of valid F-keys
+* fixed bad zone.dat file with names like "name,0,0,0,0,0,0,0"
+* fixed zone dns lookup (still another related bug)
+* fixed problem that caused key sequence set to "key 255" when editing key 
+  definitions
+* possibly fixed transparent draws on menu with some weird drivers
+* added check for wave size
+* changed default macro keys from Shift F1-F12 to LShift F1-F8 and RShift 
+  F1-F8
+* duplicate names for profile/macro/keydef are not allowed anymore
+* blank macros/keydef is created when creating new profile
+* text "updated" persist in zone list when downloading
+* backspace set to message key is cleared first time you run 0.36. This 
+  will get rid of chat bouncing problem
+* fixed problem clipping skin size when menu bar wraps
+
+In addition there has been a lot of smaller changes
+
+
+Continuum 0.35
+--------------
+
+Initial public release
+
+Cumulative changes from Subspace 1.34/1.35 to Continuum .35 follows:
+
+-Bug Fixes
+
+Main Menu/Interface
+* No longer crashes when incorrect directory server address is used
+
+Game
+* All current cheats and cheat programs no longer function (no more 
+  cheaters!)
+* Lag turrets impossible to create
+* Using F1 Help List in spec mode will not kick you out of game (from 
+  v1.35 only)
+* "Ball-warping" (using mouse to click portal icon while holding ball) 
+  is now impossible
+* SysReq key no longer induces lag
+* Unspeccing on the ball no longer lags the ball
+* "Fastbombing" is no longer possible in any form (nothing you do can 
+  override the bomb fire delay, as defined in each zone's server 
+  settings)
+* Client doesn't crash with more than 8 balls in an arena
+* No longer crashes with small player spawn radius or small green/ball 
+  spawn radius
+* Still bombs don't turn into mines
+* In zones where you spawn where you die, you can no longer jump 
+  through a wall before respawning (also, you cannot go through walls 
+  by attaching to a just-killed turret)
+* When you are attached, low energy reading is displayed next to your 
+  ship
+* ?go (Public 1) will actually take you to the public arena called 
+  (Public 1)
+* Afterburner sound no longer carries over to spectator mode
+* Rocket sound no longer continues during respawn delay
+* Clock would sometimes show 12:xx AM when it was PM
+* ?status no longer crashes game, even if there are bad settings
+* Using a new goal.wa2 actually works
+* In previous versions, if you had bouncy bombs and fired one while 
+  not moving, it would be a normal bomb - this no longer occurs
+* Overflow bug that sometimes causes flag carriers to be psuedo 
+  invincible (with certain settings) is fixed
+* Prizeweight:Quickcharge setting and Prizeweight:Recharge setting
+  were reversed in old client
+* Getting placed in safe zone while alt-tabbed did not activate safe 
+  zone timer: fixed
+
+Visuals
+* Using F4 to spectate a pair of players no longer messes up freq 
+  colors
+* Alt-tabbing in and out of game no longer screws up banners
+* No weird "reappear and warp" behavior when killing alt-tabbed 
+  clients
+* No more screwed up psychedelic in-game colors
+* When spectating on a freq, player name colors are always correct 
+  for their freq (the freq you are spectating has yellow names and 
+  enemies have blue names)
+* When spectating a freq, that freq's flags are yellow, and enemy flags 
+  are blue
+* If you have no bullets, but you have bombs with shrapnel, the shrapnel 
+  would be invisible to other people in older clients, but it would 
+  still do damage.  Continuum now displays that shrapnel
+
+Chat
+* Client always closes and saves log file if you quit before closing 
+  log (sometimes it didn't)
+* You can now use the same %macro more than once in the same line
+
+Chat Window
+* Chat display shows correct text formatting (some messages would look 
+  formatted in-game, but screwed up in chat window in old client)
+* Certain characters and text would sometimes show up as strange symbols 
+  in chat display, this is fixed
+
+
+-New Features
+
+Main Menu/Interface
+* Auto-transfers your options/settings/preferences from any previous 
+  installations of Subspace
+* Profiles let you store individualized settings for different names and 
+  different zones (including macros, key definitions, resolution, chat 
+  channels, etc.)
+* Ability to reconfigure your keyboard layout so you can choose what keys
+  do what (you can have a key to activate chat mode, letting you use 
+  letters for actions too).  Up to three different keys can be used per 
+  combination per action (example: ctrl + alt + R could be repel)
+* More macros allowed
+* Updating/Adding zones is streamlined
+* Built-in graphical trace utility to check your ping and packetloss to 
+  any zone
+* Quicker and more accurate ping updates on Zone List
+* You can have as many zones as you want on Zone List
+* Zone List is color-coded to indicate on and off-line zones
+* Automatic weblinks to your favorite zones' websites
+* Can create desktop links to open Continuum with different profiles
+* Can store multiple directory server address, Client will cycle through 
+  all of them
+* Graphical ping display for zones in zone list that shows last 7 pings
+
+
+Game
+* Entering game and changing arenas takes less time
+* Updated F1 help list to reflect new commands
+* When spectating player, you can see new info on their antiwarp, stealth, 
+  xradar, and cloak status
+* Printscreen is disabled - no longer kicks you from game (no more lamers 
+  escaping sure death), but it does let you take screenshots in-game! (puts
+  screenshot to clipboard, paste to paint program)
+* When greening, game will report what percentage of max equipment that you 
+  have (like your last green put you at 55% of your Max Top Speed)
+* Supports more than 10 (Public) arenas
+* Can set/change ?sound volume in game
+* Game announces when "Player left arena"
+* No CD check (from v1.34 only)
+* You can optionally use xradar from spec
+* In F2 Player List display, you can see what freq you are on, and how many 
+  are on your freq (the little red-lettered heading in Player List did not 
+  appear above your freq in old client)
+* Scroll Lock will also take screenshots in-game, as many as you want, 
+  auto-saving them to screenshot1.bmp, etc.
+* ?status displays your speed/thrust/recharge as percentage of current / 
+  maximum instead of percentage of current - initial / maximum (no more 0% 
+  recharge even when you have recharge)
+* ?flags no longer returns location of flags, only names and numbers (flag 
+  locations now accessible through *flags - and is left to each zone to decide 
+  who can access that info)
+* Supports new sysop /*warpto command
+* Can load new *.wa2 or *.bm2 files while game is running
+
+Visuals
+* Better framerate and smoother animation and movement on most machines (fps 
+  wont go over monitor refresh rate - so if SS says 300 fps now, but your 
+  monitor can only do a refresh rate of 80 fps, new client will only show what 
+  you are actually doing)
+* Ability to play in Windowed mode at any resolution that your system supports 
+  (you can check email, etc. while still watching game in a window - also, no 
+  sounds when SS is not the active window)
+* Option to make radar and level map (ALT) transparent (you can see game 
+  behind radar)
+* Option to make F2 Player List transparent (you can see game behind F2 List)
+* If player you are spectating can see mines on radar, you can see mines too
+* Decoys of Flag carriers and PowerBall carriers appear Red on-screen and on 
+  radar (makes decoys more effective/confusing)
+* Ball-carrier is a bigger red dot on radar
+* Brighter in-game window outlines
+* Can resize *.bm2 objects to whatever in-game dimensions you want
+
+Chat
+* Client keeps a chat buffer of chat, that can be stored to a file using 
+  ?logbuffer (you can log chat that happens before you actually started logging)
+* You can type smiles :) in public (but private smiles have to be inverted (: )
+* ?away messages work across arenas/zones
+* Can turn enter/leave messages on/off and/or display them in chat area, using 
+  ?enter and ?leave
+* What you type changes color (before you press enter) depending on message type
+* Blinking cursor in chat area to indicate pending message
+* Message history (ESC) displays more chat, and you can fly while it is on
+* You can now use :: to cycle through the last five people to message you 
+  (pressing : again cycles to next person in list - useful when carrying on 
+  conversations with multiple people)
+* Expanded Help Ticker.  Many more helpful messages for newbies
+* Client remembers last five people who messaged you even after changing arenas 
+  or changing zones
+* ?go commands without a space are ignored (no more being mean to newbies with 
+  ?godmode, only ?go dmode will work)
+* Ctrl-Backspace deletes an entire line of text
+
+Chat Window
+* IRC-style chat window layout
+* F2 Player List shown in alt-tab (so you can see who is in arena, what freq 
+  they are on, etc. - just like in-game Player List)
+* Chat display and Player List are resizable
+* If disconnected, disconnection message appears in Chat Window (because it 
+  was annoying being alt-tabbed and oblivious to the fact that you had been 
+  disconnected the past 20 minutes)
+* You can change arenas while in Chat Window (?go)
+* You can change freqs while in Chat Window (=x)
+* Private Message alarm beep sounds even when in Chat Window
+* Double clicking on player name in player list will let you send them a private 
+  message
+* You can copy and paste text from chat window to other stuff
+
+Other
+* Each zone's stuff is stored to it's own subdirectory (news, maps, etc.).  You 
+  can even put different sounds/graphics/shipsets in each zone directory and 
+  Continuum will automatically use those for that zone.  Within each zone directory 
+  you can create arena subdirectories and do the same.
+* Banners stored to \banners, screenshots stored to \screenshots, game logs stored 
+  to \logs, skins stored to \skins, graphics can be stored to \graphics, and sounds 
+  can be stored to \sounds to help further reduce clutter in game directory
+* The game has been rebuilt from the ground up, so the source code is ours.  This 
+  means new features are easy to add and just around the corner.  More importantly, 
+  should new cheats and cheat programs show up, the client can be easily updated 
+  and distributed to counter them (read: no more cheaters!)

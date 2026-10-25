@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Switch the user's view to the test workspace so they can watch a run.
+# This moves the user's focus: use it only when they ask to look. `back`
+# returns to the previous workspace.
+set -euo pipefail
+. "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
+
+hypr_check || exit 0
+hypr_lua 'hl.dispatch(hl.dsp.focus({ workspace = tonumber(WORKSPACE) })) return "focused workspace " .. WORKSPACE'

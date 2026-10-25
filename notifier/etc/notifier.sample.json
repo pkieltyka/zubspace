@@ -1,0 +1,13 @@
+{
+  "endpoint": "https://server.zubspace.gg/v1/players",
+  "poll_seconds": 2,
+  "ignore_names": ["^probe\\d{1,3}$"],
+  "provider": "slack",
+  "ntfy": {
+    "server": "https://ntfy.sh",
+    "topic": ""
+  },
+  "slack": {
+    "webhook_url": ""
+  }
+}

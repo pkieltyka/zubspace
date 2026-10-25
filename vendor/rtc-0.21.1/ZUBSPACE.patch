@@ -1,0 +1,389 @@
+--- a/src/data_channel/internal.rs
++++ b/src/data_channel/internal.rs
+@@ -2,6 +2,7 @@
+ use crate::data_channel::parameters::DataChannelParameters;
+ use crate::data_channel::state::RTCDataChannelState;
+ use datachannel::data_channel::DataChannelConfig;
++use datachannel::message::message_channel_open::ChannelType;
+ use sansio::Protocol;
+ use sctp::{PayloadProtocolIdentifier, StreamId};
+ use shared::error::{Error, Result};
+@@ -167,6 +168,28 @@
+                 data_channel_config.channel_type,
+             );
+ 
++        let reliability_parameter = u16::try_from(data_channel_config.reliability_parameter)
++            .map_err(|_| {
++                Error::OtherDataChannelErr(format!(
++                    "remote DCEP reliability parameter {} exceeds WebRTC u16 range",
++                    data_channel_config.reliability_parameter
++                ))
++            })?;
++        let (max_packet_life_time, max_retransmits) = match data_channel_config.channel_type {
++            ChannelType::PartialReliableTimed | ChannelType::PartialReliableTimedUnordered => {
++                (Some(reliability_parameter), None)
++            }
++            ChannelType::PartialReliableRexmit | ChannelType::PartialReliableRexmitUnordered => {
++                (None, Some(reliability_parameter))
++            }
++            ChannelType::Reliable | ChannelType::ReliableUnordered => (None, None),
++            _ => {
++                return Err(Error::OtherDataChannelErr(
++                    "unsupported remote DCEP channel type".into(),
++                ));
++            }
++        };
++
+         // `negotiated: None` — the peer opened this channel in-band over DCEP, so it is not an
+         // out-of-band channel however well-known its stream id now is. The stream id is set
+         // below instead of through `negotiated`, which would also flip the `negotiated` flag.
+@@ -174,8 +197,8 @@
+             label: data_channel_config.label.clone(),
+             protocol: data_channel_config.protocol.clone(),
+             ordered: !unordered,
+-            max_packet_life_time: None,
+-            max_retransmits: None,
++            max_packet_life_time,
++            max_retransmits,
+             negotiated: None,
+         });
+         // Known from the wire: no deferral needed, and it must be registered so locally
+@@ -196,3 +219,43 @@
+         Ok(())
+     }
+ }
++
++#[cfg(test)]
++mod zubspace_tests {
++    use super::*;
++
++    fn accept_open(channel_type: u8, parameter: u32) -> Result<RTCDataChannelInternal> {
++        // RFC 8832 OPEN: type, channel type, priority, reliability, label/protocol lengths.
++        let mut packet = vec![0x03, channel_type, 0, 0];
++        packet.extend_from_slice(&parameter.to_be_bytes());
++        packet.extend_from_slice(&[0, 4, 0, 0]);
++        packet.extend_from_slice(b"game");
++        RTCDataChannelInternal::accept(0, 1, PayloadProtocolIdentifier::Dcep, &packet)
++    }
++
++    #[test]
++    fn remote_dcep_preserves_all_reliability_and_ordering_modes() {
++        for (kind, ordered, lifetime, retransmits) in [
++            (0x00, true, None, None),
++            (0x80, false, None, None),
++            (0x01, true, None, Some(80)),
++            (0x81, false, None, Some(80)),
++            (0x02, true, Some(80), None),
++            (0x82, false, Some(80), None),
++        ] {
++            let channel = accept_open(kind, 80).expect("valid DCEP OPEN");
++            assert_eq!(channel.ordered, ordered);
++            assert_eq!(channel.max_packet_life_time, lifetime);
++            assert_eq!(channel.max_retransmits, retransmits);
++            assert!(!channel.negotiated);
++        }
++    }
++
++    #[test]
++    fn remote_dcep_rejects_unrepresentable_reliability_without_truncation() {
++        for kind in [0x01, 0x81, 0x02, 0x82] {
++            assert!(accept_open(kind, u32::from(u16::MAX)).is_ok());
++            assert!(accept_open(kind, u32::from(u16::MAX) + 1).is_err());
++        }
++    }
++}
+--- a/src/peer_connection/handler/sctp.rs
++++ b/src/peer_connection/handler/sctp.rs
+@@ -597,7 +597,13 @@
+                                 ::datachannel::data_channel::DataChannel::get_reliability_params(
+                                     data_channel_open.channel_type,
+                                 );
+-                            let mut stream = conn.open_stream(message.stream_id, message.ppi)?;
++                            let existing =
++                                message.negotiated && conn.stream(message.stream_id).is_ok();
++                            let mut stream = if existing {
++                                conn.stream(message.stream_id)?
++                            } else {
++                                conn.open_stream(message.stream_id, message.ppi)?
++                            };
+                             stream.set_reliability_params(
+                                 unordered,
+                                 reliability_type,
+@@ -608,7 +614,9 @@
+                             // `RTCDataChannelInit.negotiated`) only open the SCTP
+                             // stream locally; the DCEP handshake must not be sent
+                             // to the peer, which already created its own channel
+-                            // with the pre-agreed stream id.
++                            // with the pre-agreed stream id. The receiving
++                            // DataChannel adapter also uses this configure-only
++                            // command after validating a remote in-band OPEN.
+                             if message.negotiated {
+                                 is_dcep_internal_control_message = true;
+                             }
+@@ -924,18 +932,30 @@
+     /// shuttle plays the role the ICE handler plays in production: it rewrites each
+     /// datagram's source address for the receiving endpoint.
+     fn establish() -> Established {
++        establish_with_max_packet_size(None)
++    }
++
++    fn establish_with_max_packet_size(max_packet_size: Option<u32>) -> Established {
+         let now = Instant::now();
++
++        let endpoint_config = || {
++            let mut config = EndpointConfig::default();
++            if let Some(max_packet_size) = max_packet_size {
++                config.max_payload_size(sctp::max_payload_size_for_mtu(max_packet_size));
++            }
++            config
++        };
+ 
+         let mut client_ep = Endpoint::new(
+             client_addr(),
+             TransportProtocol::UDP,
+-            EndpointConfig::default().into(),
++            endpoint_config().into(),
+             None,
+         );
+         let mut server_ep = Endpoint::new(
+             server_addr(),
+             TransportProtocol::UDP,
+-            EndpointConfig::default().into(),
++            endpoint_config().into(),
+             Some(ServerConfig::new(TransportConfig::default()).into()),
+         );
+ 
+@@ -1008,6 +1028,60 @@
+             server_ch,
+             server_conn,
+         }
++    }
++
++    #[test]
++    fn configured_packet_ceiling_fragments_large_message_into_path_safe_datagrams() {
++        const MAX_SCTP_PACKET_SIZE: u32 = 1200;
++        const TAILSCALE_PATH_MTU: usize = 1280;
++        const DTLS_AES_GCM_AND_IPV4_UDP_OVERHEAD: usize = (13 + 8 + 16) + (20 + 8);
++
++        let mut established = establish_with_max_packet_size(Some(MAX_SCTP_PACKET_SIZE));
++        established
++            .client_conn
++            .open_stream(1, PayloadProtocolIdentifier::Binary)
++            .and_then(|mut stream| {
++                stream.write_chunk_with_ppi(
++                    Instant::now(),
++                    &Bytes::from(vec![0x5a; 64 * 1024]),
++                    PayloadProtocolIdentifier::Binary,
++                )
++            })
++            .expect("a full-size data-channel message should remain accepted");
++
++        // A run of small DataChannel messages exercises SCTP's DATA bundler.
++        // The upstream size check historically omitted the next 16-byte DATA
++        // header and four-byte padding, so this shape could exceed the endpoint
++        // ceiling even though a single large fragmented message could not.
++        for marker in 0..64u8 {
++            established
++                .client_conn
++                .stream(1)
++                .expect("stream")
++                .write_chunk_with_ppi(
++                    Instant::now(),
++                    &Bytes::from(vec![marker; 101]),
++                    PayloadProtocolIdentifier::Binary,
++                )
++                .expect("queue bundled DataChannel message");
++        }
++
++        let datagrams = drain_transmits(&mut established.client_conn, Instant::now());
++        assert!(datagrams.len() > 1, "the message must be fragmented");
++        assert!(
++            datagrams
++                .iter()
++                .all(|datagram| datagram.len() <= MAX_SCTP_PACKET_SIZE as usize),
++            "every raw SCTP datagram must honor the configured packet ceiling; sizes={:?}",
++            datagrams.iter().map(Bytes::len).collect::<Vec<_>>()
++        );
++        assert!(
++            datagrams.iter().any(|datagram| datagram.len() > 1000),
++            "the test must exercise a near-ceiling packet, not only small control packets"
++        );
++        assert!(datagrams.iter().all(|datagram| {
++            datagram.len() + DTLS_AES_GCM_AND_IPV4_UDP_OVERHEAD <= TAILSCALE_PATH_MTU
++        }));
+     }
+ 
+     /// Build a client association that has sent COOKIE-ECHO but has not yet received COOKIE-ACK,
+@@ -1373,6 +1447,144 @@
+         }
+     }
+ 
++    #[test]
++    fn remotely_opened_channel_applies_unordered_reply_policy_to_sctp_wire() {
++        for channel_type in [
++            ChannelType::Reliable,
++            ChannelType::ReliableUnordered,
++            ChannelType::PartialReliableTimedUnordered,
++        ] {
++            let now = Instant::now();
++            let mut established = establish();
++            let open = Message::DataChannelOpen(DataChannelOpen {
++                channel_type,
++                priority: CHANNEL_PRIORITY_NORMAL,
++                reliability_parameter: if channel_type == ChannelType::PartialReliableTimedUnordered
++                {
++                    80
++                } else {
++                    0
++                },
++                label: b"remote-open".to_vec(),
++                protocol: Vec::new(),
++            })
++            .marshal()
++            .expect("DCEP OPEN");
++            established
++                .server_conn
++                .open_stream(1, PayloadProtocolIdentifier::Dcep)
++                .unwrap()
++                .write_sctp(now, &Bytes::from(open), PayloadProtocolIdentifier::Dcep)
++                .unwrap();
++            let datagrams = drain_transmits(&mut established.server_conn, now);
++            let (mut sctp_ctx, _) = run_client(now, established, datagrams, 0);
++            let inbound = sctp_ctx.read_outs.pop_front().expect("remote DCEP");
++            let mut dc_ctx = DataChannelHandlerContext::new(now);
++            let mut registry = DataChannelRegistry::new();
++            let mut stats = RTCStatsAccumulator::new();
++            DataChannelHandler::new(
++                &mut dc_ctx,
++                &mut registry,
++                &mut stats,
++                None,
++                RTCDtlsRole::Client,
++                None,
++            )
++            .handle_read(inbound)
++            .unwrap();
++            // Drive the real ACK from the receiving DataChannel handler back
++            // through SCTP before sending a reply, exactly as the pipeline does.
++            {
++                let mut handler = SctpHandler::new(&mut sctp_ctx, 0);
++                for message in dc_ctx.write_outs.drain(..) {
++                    handler.handle_write(message).unwrap();
++                }
++            }
++            let association = sctp_ctx
++                .sctp_transport
++                .sctp_associations
++                .values_mut()
++                .next()
++                .unwrap();
++            association
++                .stream(1)
++                .unwrap()
++                .write_sctp(
++                    now + Duration::from_millis(501),
++                    &Bytes::from_static(b"application reply"),
++                    PayloadProtocolIdentifier::Binary,
++                )
++                .unwrap();
++            let wire = drain_transmits(association, now + Duration::from_millis(501));
++            let mut found = false;
++            let mut acks = 0;
++            for datagram in wire {
++                let mut offset = 12; // SCTP common header.
++                while offset + 4 <= datagram.len() {
++                    let length =
++                        u16::from_be_bytes([datagram[offset + 2], datagram[offset + 3]]) as usize;
++                    assert!(length >= 4 && offset + length <= datagram.len());
++                    if datagram[offset] == 0
++                        && length >= 16
++                        && u32::from_be_bytes(
++                            datagram[offset + 12..offset + 16].try_into().unwrap(),
++                        ) == 53
++                    {
++                        found = true;
++                        assert_eq!(
++                            datagram[offset + 1] & 4 != 0,
++                            channel_type != ChannelType::Reliable,
++                            "remote {:?} must send unordered binary DATA, not merely report unordered metadata",
++                            channel_type
++                        );
++                    } else if datagram[offset] == 0
++                        && length >= 17
++                        && u32::from_be_bytes(
++                            datagram[offset + 12..offset + 16].try_into().unwrap(),
++                        ) == 50
++                    {
++                        assert_eq!(
++                            datagram[offset + 16],
++                            2,
++                            "configure-only OPEN must never leak onto the wire"
++                        );
++                        acks += 1;
++                    }
++                    offset += (length + 3) & !3;
++                }
++            }
++            assert!(
++                found,
++                "the oracle must inspect an actual application DATA chunk"
++            );
++            assert_eq!(acks, 1, "exactly one DCEP ACK belongs on the wire");
++            // Keep a second reply unsent beyond the negotiated 80 ms lifetime.
++            // Reliable events must survive; timed game data must not.
++            let late_payload = b"late queued application reply";
++            association
++                .stream(1)
++                .unwrap()
++                .write_sctp(
++                    now + Duration::from_millis(600),
++                    &Bytes::from_static(late_payload),
++                    PayloadProtocolIdentifier::Binary,
++                )
++                .unwrap();
++            let late_wire = drain_transmits(association, now + Duration::from_millis(681));
++            let transmitted = late_wire.iter().any(|datagram| {
++                datagram
++                    .windows(late_payload.len())
++                    .any(|window| window == late_payload)
++            });
++            assert_eq!(
++                transmitted,
++                channel_type != ChannelType::PartialReliableTimedUnordered,
++                "actual SCTP expiry must match the negotiated {:?} policy",
++                channel_type
++            );
++        }
++    }
++
+     /// An SCTP DATA message received before COOKIE-ACK must stay in the association's receive
+     /// queue.  Once COOKIE-ACK establishes the association, the same message is delivered exactly
+     /// once, allowing the DataChannel handler to announce `OnOpen` only after SCTP is ready.
+--- a/src/peer_connection/handler/datachannel.rs
++++ b/src/peer_connection/handler/datachannel.rs
+@@ -210,6 +210,25 @@
+                     &message.payload,
+                 )?;
+ 
++                // DCEP properties govern BOTH directions (RFC 8832 section 4).
++                // Accepting an OPEN updated public metadata, but only locally
++                // dialed OPENs previously configured the actual SCTP sender.
++                // Queue the validated OPEN as an internal configuration command
++                // before its ACK or any application reply. `negotiated` here is
++                // the existing SCTP-layer "configure only, do not put OPEN on
++                // the wire" flag; the accepted channel itself stays in-band.
++                // Duplicate/invalid OPENs never enter this new-channel branch.
++                self.ctx.write_outs.push_back(TaggedRTCMessageInternal {
++                    now,
++                    transport: TransportContext::default(),
++                    message: RTCMessageInternal::Dtls(DTLSMessage::Sctp(
++                        ::datachannel::data_channel::DataChannelMessage {
++                            negotiated: true,
++                            ..message
++                        },
++                    )),
++                });
++
+                 self.data_channels.insert(data_channel_internal);
+                 true
+             };

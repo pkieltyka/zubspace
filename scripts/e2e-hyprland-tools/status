@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Report the test-browser workspace rule state, the user's active workspace,
+# and every open window carrying the test class.
+set -euo pipefail
+. "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
+
+hypr_check || exit 0
+
+printf 'config: class=%s workspace=%s (ZUBSPACE_E2E_WINDOW_CLASS / ZUBSPACE_E2E_HYPR_WORKSPACE)\n' \
+  "$ZUBSPACE_E2E_WINDOW_CLASS" "$ZUBSPACE_E2E_HYPR_WORKSPACE"
+hypr_lua '
+  local out = {}
+  local G = _G.__zubspace_e2e
+  if G and G.rules and #G.rules > 0 then
+    out[#out + 1] = string.format("rule: %s (class ^%s$ -> workspace %s silent, activation focus blocked, registered %s)",
+      G.enabled and "enabled" or "disabled", G.class, G.workspace, G.since or "?")
+  else
+    out[#out + 1] = "rule: not registered in this Hyprland session"
+  end
+  local active = hl.get_active_workspace()
+  out[#out + 1] = "active workspace: " .. (active and active.name or "?")
+  local target = hl.get_workspace(tonumber(WORKSPACE))
+  out[#out + 1] = string.format("workspace %s: %s", WORKSPACE,
+    target and (tostring(target.windows) .. " window(s)") or "absent (it exists only while it holds windows)")
+  local n = 0
+  for _, w in ipairs(hl.get_windows()) do
+    if w.class == CLASS then
+      n = n + 1
+      out[#out + 1] = string.format("  pid=%s workspace=%s size=%sx%s floating=%s xwayland=%s title=%s",
+        tostring(w.pid), w.workspace and w.workspace.name or "?", tostring(w.size and w.size.x), tostring(w.size and w.size.y),
+        tostring(w.floating), tostring(w.xwayland), tostring(w.title))
+    end
+  end
+  out[#out + 1] = string.format("test windows (class %s): %d", CLASS, n)
+  return table.concat(out, "\n")
+'

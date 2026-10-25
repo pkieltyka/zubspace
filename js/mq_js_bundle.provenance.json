@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "base": {
+    "package": "macroquad",
+    "version": "0.4.16",
+    "vcsRevision": "5e9b5ca912ac65962c05c0da842a4a70eaae34b9",
+    "archiveSha256": "1cbd54d99d4d3ac59deed7ee4927bbbf4eb33a55635530af3be9395a55746090",
+    "bundlePath": "vendor/browser-runtime/macroquad-0.4.16.js",
+    "bundleSha256": "4bf663a44a06c113bed92e0596c58139cd9db7f0d67ef2cc49ca06016e0b5ea0"
+  },
+  "bundleSha256": "3a262ff4f74cc051b49d4b487ea136154fbd5c8e71a8053ff33785bc7de74d3e",
+  "rustPackages": {
+    "macroquad": {
+      "version": "0.5.1",
+      "source": null
+    },
+    "miniquad": {
+      "version": "0.4.11",
+      "source": null
+    },
+    "quad-snd": {
+      "version": "0.2.8",
+      "source": "registry+https://github.com/rust-lang/crates.io-index"
+    }
+  },
+  "abi": {
+    "miniquad": 2,
+    "plugins": {
+      "macroquad_audio": 1,
+      "sapp_jsutils": 1,
+      "quad_net": 1
+    },
+    "requiredWasmPlugins": [
+      "macroquad_audio"
+    ],
+    "webglSelection": 2
+  },
+  "patches": [
+    "fallback-canvas",
+    "bounded-download-copy",
+    "module-aware-import-resolution",
+    "wasm-response-callback",
+    "quiet-audio-unlock",
+    "scoped-quad-net-registrar",
+    "terminal-newline",
+    "audio-terminal-decode-state",
+    "audio-pending-cancellation",
+    "audio-decode-promise-settlement",
+    "webgl2-preferred-context-selection",
+    "owned-browser-mouse-termination",
+    "configured-webgl-antialias-request",
+    "owned-touch-missing-terminal-reconciliation"
+  ],
+  "extensions": {
+    "zubspace_audio_source_state": {
+      "version": 1,
+      "import": "env.audio_source_state",
+      "states": {
+        "pending": 0,
+        "loaded": 1,
+        "failed": -1,
+        "unknownOrDeleted": -2
+      },
+      "requiredByCurrentRust": true
+    },
+    "fork_webgl_selection": {
+      "version": 2,
+      "import": "env.webgl_selection_version",
+      "modes": {
+        "auto": 0,
+        "webgl1": 1,
+        "webgl2": 2
+      },
+      "requiredByCurrentRust": true,
+      "sourcePath": "vendor/miniquad/js/gl.js",
+      "sourceSha256": "5b9bed2c9c13d09d3af3180cf406c3d76d64823fc780ccbdcff9d8224e73afaf",
+      "initializer": "init_webgl(version, antialias): antialias is 0 or 1; only the antialias context attribute is specified"
+    }
+  },
+  "pairing": {
+    "repository": "https://github.com/pkieltyka/macroquad",
+    "tag": "zubspace-v0.5.1",
+    "sourcePolicy": "macroquad and vendored miniquad come from the same Git revision; concrete release commit is recorded in release-manifest.json, not this source template"
+  }
+}

@@ -1,0 +1,251 @@
+# nginx config template for the zubspace client container.
+#
+# `ZUBSPACE_SERVER_UPSTREAM`, the listen address/port and `ZUBSPACE_ROBOTS_TAG` are interpolated by nginx's
+# `/docker-entrypoint.d/20-envsubst-on-templates.sh` at container start.
+# Default: zubspace-server:9001 (compose service name).
+#
+# The rendered file lands in `conf.d/default.conf`, which the base image includes
+# inside the `http` block, so the top-level `map`s below are in scope for the
+# `server` block, and envsubst cannot rewrite nginx variables (`$scheme`,
+# `$remote_addr`, `$http_*`) that were never environment variables.
+
+# `X-Forwarded-Proto` describes the scheme the *client* used. Behind a TLS
+# terminator - Cloudflare Tunnel, or any reverse proxy - the connection into
+# nginx is plain HTTP, so blindly forwarding `$scheme` reports "http" and makes
+# `ZUBSPACE_SERVER_SIGNALING_REQUIRE_HTTPS=true` reject every SDP offer. Preserve
+# an upstream value when one was sent, else use the connection's own scheme.
+map $http_x_forwarded_proto $zubspace_forwarded_proto {
+    default $http_x_forwarded_proto;
+    ""      $scheme;
+}
+
+# ...but only for peers we actually proxy from. Trusting the header from any
+# caller would let a direct request forge `https` and bypass the HTTPS gate, so
+# the preserved value is used only when the TCP peer is loopback (the tunnel or a
+# same-host proxy); every other peer gets the observed `$scheme`.
+# `$realip_remote_addr` is that TCP peer even after the real_ip rewrite below
+# replaces `$remote_addr` with the browser's address.
+map $realip_remote_addr $zubspace_trusted_proto {
+    default     $scheme;
+    "127.0.0.1" $zubspace_forwarded_proto;
+    "::1"       $zubspace_forwarded_proto;
+}
+
+# Dev sends `X-Robots-Tag: noindex` so search engines keep it out of their
+# results (deploy/dev/compose.env). Prod leaves ZUBSPACE_ROBOTS_TAG empty, and
+# nginx omits a header whose value is empty. A location with its own add_header
+# drops the server's, so every such location repeats this one.
+map $host $zubspace_robots_tag {
+    default "${ZUBSPACE_ROBOTS_TAG}";
+}
+
+server {
+    listen ${ZUBSPACE_CLIENT_LISTEN_ADDRESS}:${ZUBSPACE_CLIENT_LISTEN_PORT} default_server;
+    server_name _;
+
+    # Behind cloudflared every connection comes from loopback. Take the browser's
+    # address from Cloudflare so the game server's per-source offer limit and logs
+    # see real clients. Only loopback peers may set it, and requests without the
+    # header (local Compose, tests) keep their TCP peer address.
+    set_real_ip_from 127.0.0.1;
+    set_real_ip_from ::1;
+    real_ip_header CF-Connecting-IP;
+
+    add_header X-Robots-Tag $zubspace_robots_tag always;
+
+    # Static client bundle.
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # The pinned nginx image's standard MIME map includes application/wasm.
+    # Keep the full map so HTML, JavaScript and images retain their types too.
+    include /etc/nginx/mime.types;
+
+    # The WASM blob never changes for a given build (filename-versioned via
+    # BUILD_INFO.json query string), so cache aggressively.
+    location ~ \.(?:wasm|js)$ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+        add_header X-Robots-Tag $zubspace_robots_tag always;
+        try_files $uri =404;
+    }
+
+    # index.html should NOT be cached — clients need to pick up a new
+    # build's asset version stamp the next time they reload.
+    location = / {
+        add_header Cache-Control "no-store";
+        add_header X-Robots-Tag $zubspace_robots_tag always;
+        try_files /index.html =404;
+    }
+
+    location = /index.html {
+        add_header Cache-Control "no-store";
+        add_header X-Robots-Tag $zubspace_robots_tag always;
+    }
+
+    # nginx has no portable process-uptime variable; report unknown rather
+    # than presenting the game server's uptime as the client service's age.
+    location = /client-status {
+        default_type application/json;
+        add_header Cache-Control "no-store";
+        add_header X-Robots-Tag $zubspace_robots_tag always;
+        return 200 '{"ok":true,"service":"zubspace-client","uptime_seconds":null}';
+    }
+
+    # Server health/status: used by the loading screen and external checks.
+    location = /v1/status {
+        limit_except GET OPTIONS { deny all; }
+        proxy_pass http://${ZUBSPACE_SERVER_UPSTREAM}/v1/status;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        # `For` always reports the immediate peer; `Proto` trusts an upstream
+        # value only from the loopback proxy (see the maps above).
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $zubspace_trusted_proto;
+    }
+
+    # Runtime zone discovery; authenticated bundle contents stay server-side.
+    location = /v1/zones {
+        limit_except GET OPTIONS { deny all; }
+        proxy_pass http://${ZUBSPACE_SERVER_UPSTREAM}/v1/zones;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $zubspace_trusted_proto;
+    }
+
+    # Zone-scoped discovery, capacity and simulation diagnostics.
+    location ~ ^/v1/zones/[a-z0-9-]+(?:/(?:players|status))?$ {
+        limit_except GET OPTIONS { deny all; }
+        proxy_pass http://${ZUBSPACE_SERVER_UPSTREAM};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $zubspace_trusted_proto;
+    }
+
+    # Public roster and liveness (docs/public-server-api.md). The menu checks
+    # /v1/players before Join; without this proxy it gets a 404 and skips the
+    # check. Both routes are read-only and send their own no-store.
+    location = /v1/players {
+        limit_except GET { deny all; }
+        proxy_pass http://${ZUBSPACE_SERVER_UPSTREAM}/v1/players;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $zubspace_trusted_proto;
+    }
+
+    location = /v1/ping {
+        limit_except GET { deny all; }
+        proxy_pass http://${ZUBSPACE_SERVER_UPSTREAM}/v1/ping;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $zubspace_trusted_proto;
+    }
+
+    # WebRTC signaling: forward the SDP offer to the game server.
+    # The response is the SDP answer; after that the data channels go
+    # peer-to-peer (browser <-> server) over the host's NAT/firewall.
+    location /v1/rtc/offer {
+        proxy_pass http://${ZUBSPACE_SERVER_UPSTREAM}/v1/rtc/offer;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        # `For` always reports the immediate peer; `Proto` trusts an upstream
+        # value only from the loopback proxy (see the maps above).
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $zubspace_trusted_proto;
+        # SDP exchange is small but can stall a few hundred ms while ICE
+        # gathers candidates — relax the default 60s timeouts to be safe.
+        proxy_read_timeout 30s;
+        proxy_send_timeout 30s;
+    }
+
+    # The browser's optional authenticated QA upload follows the ordinary URL.
+    # Only this exact POST endpoint is public; retrieval stays host-local on
+    # the game server, never exposed through /v1/qa/trace/<id>.
+    location = /v1/qa/trace {
+        limit_except POST { deny all; }
+        client_max_body_size 256k;
+        proxy_pass http://${ZUBSPACE_SERVER_UPSTREAM}/v1/qa/trace;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $zubspace_trusted_proto;
+        proxy_read_timeout 30s;
+        proxy_send_timeout 30s;
+    }
+
+    # Opt-in client presentation diagnostics; game-server policy/authentication
+    # decide availability. No arbitrary debug or trace retrieval paths proxy.
+    location = /v1/debug/client-trace {
+        limit_except GET POST { deny all; }
+        client_max_body_size 192k;
+        proxy_pass http://${ZUBSPACE_SERVER_UPSTREAM}/v1/debug/client-trace;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $zubspace_trusted_proto;
+        proxy_read_timeout 5s;
+        proxy_send_timeout 5s;
+    }
+
+    # Zone files, sprite sheets and other unversioned assets keep their names
+    # across builds, so caches must revalidate them (ETag/304) instead of
+    # serving a previous deploy's copy.
+    location / {
+        add_header Cache-Control "no-cache";
+        add_header X-Robots-Tag $zubspace_robots_tag always;
+        try_files $uri =404;
+    }
+
+    # Returns 200 once the nginx container is up. Compose/k8s health
+    # check target.
+    location = /healthz {
+        access_log off;
+        return 200 "ok\n";
+        add_header Content-Type text/plain;
+        add_header X-Robots-Tag $zubspace_robots_tag always;
+    }
+}
+
+# Game-server API hostnames: server.zubspace.gg, dev-server.zubspace.gg, and
+# any later <name>-server.<domain>. They serve only the read-only public API
+# (docs/public-server-api.md) and answer 404 for everything else, so the client
+# bundle, signaling and QA/debug uploads stay on the site hostname. The
+# Cloudflare tunnel applies the same path allowlist before this
+# (deploy/cloudflare/zubspace.gg.json).
+server {
+    listen ${ZUBSPACE_CLIENT_LISTEN_ADDRESS}:${ZUBSPACE_CLIENT_LISTEN_PORT};
+    server_name ~^(?:[a-z0-9-]+-)?server\.;
+
+    add_header X-Robots-Tag $zubspace_robots_tag always;
+
+    set_real_ip_from 127.0.0.1;
+    set_real_ip_from ::1;
+    real_ip_header CF-Connecting-IP;
+
+    # OPTIONS is allowed for cross-origin preflight; the server answers it.
+    location ~ ^/v1/(?:status|players|ping|zones(?:/[a-z0-9-]+(?:/(?:players|status))?)?)$ {
+        limit_except GET OPTIONS { deny all; }
+        proxy_pass http://${ZUBSPACE_SERVER_UPSTREAM};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $zubspace_trusted_proto;
+    }
+
+    location / {
+        return 404;
+    }
+}

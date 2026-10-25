@@ -1,0 +1,20 @@
+# Per-target build settings, used by every `cargo build` / `cargo test`
+# invocation in this workspace.
+#
+# WASM linking: rustc bundles `rust-lld` and knows how to dispatch it
+# in wasm mode when invoked with `linker-flavor=wasm-ld`. For users on
+# stock `rustup`, `rust-lld` is already on the toolchain's bin PATH
+# and `cargo build --target wasm32-unknown-unknown` just works.
+#
+# For users on Nix (or any environment where the slim runtime rustc
+# doesn't ship `rust-lld` in the standard location), set `WASM_LINKER` in
+# the Makefile. See `Makefile`'s `build-client` target for the env-driven
+# escape hatch.
+[target.wasm32-unknown-unknown]
+linker = "rust-lld"
+rustflags = [
+    "-C",
+    "linker-flavor=wasm-ld",
+    "-C",
+    "link-arg=--allow-undefined",
+]

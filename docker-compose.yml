@@ -1,0 +1,94 @@
+# docker-compose.yml — bring up a self-contained zubspace deployment.
+#
+# Two services sharing the Linux host network for a working local ICE path:
+#   - zubspace-server: the Rust game server (WebRTC DataChannels).
+#   - zubspace-client: nginx serving the static client bundle and
+#     reverse-proxying the server's public /v1 API (signaling, status,
+#     players, zones) to the server.
+#
+# Usage:
+#   make docker-build
+#   docker compose up
+#   # then open http://localhost:7000/
+#
+# To change the loopback client port, override at runtime:
+#   ZUBSPACE_CLIENT_PORT=8080 docker compose up
+#
+# To start server-owned bots (default 0), override at runtime:
+#   ZUBSPACE_SERVER_BOT_COUNT=4 docker compose up
+#
+# Raw Compose builds need the source revision (the Make targets set it):
+#   ZUBSPACE_BUILD_COMMIT=$(git rev-parse HEAD) docker compose build
+# Source archives must supply their full original commit explicitly.
+#
+# Docker Engine on Linux is required. HTTP ingress is loopback-only, but the
+# RTC implementation binds UDP 9002-9501 to 0.0.0.0 in the host network. Apply
+# host firewall rules before treating this as a local-only playtest. This is not
+# a production deploy; see `docs/deployment.md` for exposure/NAT/STUN/TURN.
+
+services:
+  zubspace-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+      args:
+        ZUBSPACE_BUILD_COMMIT: "${ZUBSPACE_BUILD_COMMIT:-}"
+    image: zubspace/server:dev
+    restart: unless-stopped
+    # Host networking lets the container resolve/reach Chrome's local ICE
+    # candidate and places the server's UDP candidates directly on the host.
+    # HTTP signaling binds loopback, but RTC UDP binds every host IPv4
+    # interface through 0.0.0.0 by default. To gather one directly routed host
+    # interface instead, set ZUBSPACE_SERVER_RTC_UDP_BIND_IP to an IPv4 address
+    # actually assigned in this host-network namespace. Restrict
+    # 9002-9501/udp with the host firewall for local play.
+    # For constrained routes such as Tailscale also set the measured path MTU;
+    # 1280 derives a 1200-byte pre-DTLS SCTP packet ceiling.
+    network_mode: host
+    environment:
+      ZUBSPACE_SERVER_BIND: "127.0.0.1:9001"
+      # ZUBSPACE_SERVER_RTC_UDP_PATH_MTU: "1280"
+      # webrtc-rs 0.21 binds one exclusive UDP socket per peer. This 500-port
+      # range covers config/zubspace_server.toml's max_players=500.
+      # Startup refuses fewer sockets; this is not 500-peer load-test evidence.
+      ZUBSPACE_SERVER_UDP_PORT_RANGE: "9002-9501"
+      # Server-owned bots run inside the server tick; no extra container.
+      ZUBSPACE_SERVER_BOT_COUNT: "${ZUBSPACE_SERVER_BOT_COUNT:-0}"
+      # Local play remains origin-permissive. nginx is the browser-facing
+      # loopback endpoint and overwrites all forwarding headers before the
+      # server trusts them for per-browser signaling identity.
+      ZUBSPACE_SERVER_SIGNALING_ALLOWED_ORIGINS: "${ZUBSPACE_SERVER_SIGNALING_ALLOWED_ORIGINS:-*}"
+      ZUBSPACE_SERVER_SIGNALING_AUTH_TOKEN: "${ZUBSPACE_SERVER_SIGNALING_AUTH_TOKEN:-}"
+      ZUBSPACE_SERVER_SIGNALING_REQUIRE_HTTPS: "${ZUBSPACE_SERVER_SIGNALING_REQUIRE_HTTPS:-false}"
+      ZUBSPACE_SERVER_SIGNALING_TRUST_PROXY_HEADERS: "true"
+    healthcheck:
+      # Scalar form also permits test-only port overrides on Compose providers
+      # that concatenate list-valued healthcheck commands.
+      test: "curl --fail --silent --show-error http://127.0.0.1:9001/v1/status"
+      interval: 30s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  zubspace-client:
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+      args:
+        ZUBSPACE_BUILD_COMMIT: "${ZUBSPACE_BUILD_COMMIT:-}"
+    image: zubspace/client:dev
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      zubspace-server:
+        condition: service_healthy
+    environment:
+      ZUBSPACE_SERVER_UPSTREAM: "127.0.0.1:9001"
+      ZUBSPACE_CLIENT_LISTEN_ADDRESS: "127.0.0.1"
+      ZUBSPACE_CLIENT_LISTEN_PORT: "${ZUBSPACE_CLIENT_PORT:-7000}"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:$${ZUBSPACE_CLIENT_LISTEN_PORT}/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 5
+      start_period: 3s

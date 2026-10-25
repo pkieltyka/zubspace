@@ -1,0 +1,39 @@
+[package]
+name = "zubspace"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[dependencies]
+flate2 = "1.1.10"
+image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "jpeg", "png"] }
+sha2 = "0.11.1"
+tracing = "0.1.44"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+macroquad = { git = "https://github.com/pkieltyka/macroquad", rev = "25b88535a93d0422c7b9ee9a86dba4c026541612", default-features = false, features = ["audio"] }
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+async-trait = "0.1.92"
+bytes = "1.12.1"
+getrandom = "0.4.3"
+macroquad = { git = "https://github.com/pkieltyka/macroquad", rev = "25b88535a93d0422c7b9ee9a86dba4c026541612", default-features = false }
+# QA bundles retain browser f64 timing values exactly through JSON uploads.
+serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
+libc = "0.2.190"
+tokio = { version = "1.53.3", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
+tracing-subscriber = { version = "0.3.23", features = ["fmt", "json"] }
+url = "2.5.8"
+webrtc = "0.21.1"
+
+[patch.crates-io]
+rtc = { path = "vendor/rtc-0.21.1" }
+rtc-sctp = { path = "vendor/rtc-sctp-0.21.1" }
+webrtc = { path = "vendor/webrtc-0.21.1" }
+
+# Debug QA hashes the actual running executable before opening the listener.
+# Keep application debug checks/symbols while avoiding unoptimized hashing of
+# the large debug binary and authored asset catalog on every server startup.
+[profile.dev.package."sha2:0.11.1"]
+opt-level = 3

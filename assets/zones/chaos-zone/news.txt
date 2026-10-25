@@ -1,0 +1,63 @@
+2019.04.24
+
+New Game Server!
+
+--hallu
+
+==================================
+
+Fri July 3, 2015
+Welcome Steam players!
+
+Chaos/Pro League zone is the longest running zone in Subspace!
+Based on the original SVS settings, it values skill over luck,
+and the veteran players are the best in Subspace!
+
+To ask for help - just type ?help <my question>
+
+Basic play: 
+arrows to move; ctrl for bullets; tab for bombs;
+shift-ctrl to repel enemies and weapons.
+watch your energy! When it goes to zero, you die!
+
+Have fun!
+
+--hallu
+
+==================================
+
+List of spawns:
+
+4v4 spawns are for pro league play
+
+?go duel -- dueling zone with duel settings
+
+?go alpha -- alpha zone!
+
+?go newb		passplay -- Newbie teaching map
+
+List of maps:
+
+?go TotalChaos -- RenderGod combo of East and West maps  
+?go kaos -- kaos kombat arena
+?go Firesauce -- original map
+?go chaoswest -- Chaos west map
+?go Thrull -- original map
+
+?go Events -- event arena
+?go League -- Chaos Zone League arena
+
+===========
+?getnews places the news.txt of the zone you are in onto your harddrive
+?lag combines readings from ?ping and ?packetloss
+!showlag will show your lag stats to everyone in Chaos
+===========
+
+===========
+CHEATING:  Chaos is a zero tolerance zone.  You will be caught, you will be 
+banned.  No questions will be asked, nor notification given.  So please don't.
+To report cheaters, type: ?cheater <cheater's name> <how they are cheating> 
+===========
+
+http://forum.svssubspace.com/index.php
+

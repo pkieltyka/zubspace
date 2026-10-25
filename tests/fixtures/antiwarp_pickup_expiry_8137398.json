@@ -1,0 +1,29 @@
+{
+  "producerHead": "8137398439c5b3ac0946860a2ec8a03a5fe5972c",
+  "source": "/home/peter/.local/state/zubspace/acceptance-worktrees/final-isolated-12489f9/.debug/final-accumulated-8137398/artifacts/zubspace-antiwarp_scope-1000536424365-283357-failure",
+  "origin": {
+    "x": 7176,
+    "y": 7160
+  },
+  "prize": {
+    "x": 8232,
+    "y": 8184,
+    "collectibleId": 8,
+    "prizeId": 20,
+    "expiresAtTick": 5884
+  },
+  "spawnTick": 1483,
+  "ttlTicks": 4401,
+  "actualRouteDistancePx": 2988.729457825832,
+  "actualRouteDurationMs": 83602,
+  "routeReached": true,
+  "routeCompleted": false,
+  "final": {
+    "x": 8232.8,
+    "y": 8183.6,
+    "velocityX": -1.83,
+    "velocityY": -0.27
+  },
+  "finalServerTick": 10075,
+  "finalLifeSeq": 1
+}

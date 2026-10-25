@@ -1,0 +1,491 @@
+  Title: Continuum (c) Skins Development Guide
+Version: 1.2
+   Date: February 11, 2002
+ Author: Mr. Ekted
+
+================================= VERSIONS ===================================
+
+1.0 Initial implementation.
+
+1.1 Fixed errors in documentation.
+
+1.2 Added several new regions (prev/next profile, macros, keydefs, options, 
+      advanced options, ping).
+    Added 25 user-defined regions.
+    Added support for animations.
+    Added user-definable colors (profile text, zone text/graph, zone select).
+    Changed the way zone scroll arrows work.
+
+============================== WHAT IS A SKIN? ===============================
+
+A skin in Continuum is a file that decribes what the main startup screen looks
+like and how you interact with it. It defines everything except the window
+title, menu, and borders. Continuum comes with a built-in skin called 
+<default>. All other skins must be placed into a subdirectory called "skins".
+Continuum detects all the skin files there at startup time and puts their 
+names on the menu. Selecting a skin from the menu will instantly change the
+interface to the new skin.
+
+=============================== MAKESKIN TOOL ================================
+
+A skin file is composed of a BMP file and a TXT file, and the resulting skin
+file is given the extension SKN. To make a skin file, download the utility 
+"makeskin.exe" available from any of the official Continuum download sites.
+Although it is a command-line tool, it is made so that you can drag-and-drop
+either the BMP or the TXT file onto "makeskin.exe" in "My Computer" or 
+"Explorer".
+
+   For example, if you drop "myskin.bmp" onto "makeskin.exe", it will run, load
+   "myskin.bmp" and "myskin.txt, write out "myskin.skn", and close with no 
+   other interaction required. Note that if you use this technique with a long
+   filename, Windows will translate the name to its alternate form, and the
+   resulting SKN file will have such a name (e.g. ContinuumSkin -> CONTIN~1).
+   You can simply rename the SKN file aterwards by hand.
+
+If you want to run it manually from a command prompt, simply type:
+
+   makeskin xyz
+
+This will attempt to build "xyz.skn" from "xyz.bmp" and "xyz.txt". I recommend
+keeping "makeskin.exe" and all your BMP and TXT files in one directory for 
+convenience, and copying completed SKN files to the "skins" subdirectory for
+testing.
+
+================================ THE BMP FILE ================================
+
+The BMP file is a standard Windows bitmap. It can be any color depth. 8-bit 
+color is the smallest but the worst looking. Higher color depths make larger
+files but they look better. Use your judgement.
+
+The BMP file contains 2 types of regions: a single main region (required), and
+any number of overlay regions (optional). The main region is what is displayed
+as the normal background of the window with nothing selected or highlighted.
+The size of this region sets the size of the interface. Overlay regions are
+smaller sections of the main region with some change (highlight, animation,
+blinking/moving effect, or whatever). They are drawn on top of the main region
+as required or described by the skin description file (TXT - details below).
+
+Here's an example BMP file with a main region, and a single overlay region:
+
+   +-----------------------------------------------------++-----------+
+   |                                                     ||           |
+   |                                                     ||     A1    |
+   |           +-----------+                             ||           |
+   |           |           |                             |+-----------+
+   |           |     A     |                             |
+   |           |           |                             |
+   |           +-----------+                             |
+   |                                                     |
+   |                                                     |
+   |                      main                           |
+   |                                                     |    unused
+   |                                                     |
+   |                                                     |
+   |                                                     |
+   |                                                     |
+   |                                                     |
+   |                                                     |
+   +-----------------------------------------------------+
+
+In this picture, A indicates the location and size within the main region. A1 
+is the overlay region that will be drawn on A when necessary. Note that A needs 
+to define a rectangle within the main region. Since the rectangle for A by 
+definition includes the width and height, A1 only needs to be defined by the
+point at its upper left corner.
+
+Within the interface, the user interacts with hot spots. These are areas of the
+window that have one defined purpose, like buttons, text areas, etc. A hot spot
+can have a rectangular shape (in which case it can be defined with a single
+overlay region), or it may have an odd shape (in which case it can be defined 
+with multiple overlay regions).
+
+Here's an example BMP file with a main region, and an odd-shaped hot spot 
+defined by two overlay regions:
+
+   +-----------------------------------------------------++-----------+
+   |                                                     ||           |
+   |                                                     ||     A1    |
+   |           +-----------+                             ||           |
+   |           |           |                             |+-----------+
+   |           |     A     |                             |
+   |           |           |                             |    +----+
+   |           +----+------+                             |    |    |
+   |           |    |                                    |    | B1 |
+   |           | B  |                                    |    |    |
+   |           |    |     main                           |    +----+
+   |           +----+                                    |
+   |                                                     |    unused
+   |                                                     |
+   |                                                     |+----+
+   |                                                     ||    |
+   |                                                     || B2 |
+   |                                                     ||    |
+   +-----------------------------------------------------++----+
+
+In this picture, A and B indicate the locations and sizes within the main 
+region for some hot spot. A1 is the overlay region that will be drawn on A when
+necessary. B1/B2 are the overlay regions that will be drawn on B when 
+necessary. Note that the positions of A1/B1/B2 do not necessarily have to be
+in exactly the same relative positions as the shape of the hot spot itself. In
+fact that can even overlap each other if the images share some common parts:
+
+                  +-----------+            
+                  |           |            
+                  |     A1    |            
+                  |           |            +-----------+ 
+                  +-----------+            |           | 
+                                           |     A1    | 
+                  +----+                   |           ++
+                  |    |            OR     +--+         |
+                  | B1 |           EVEN       | B1   B2 |  
+                  |    +--+                   |         |  
+                  +--+    |                   +---------+  
+                     | B2 |                  
+                     |    |                  
+                     +----+                  
+
+Overlay regions may also share space with other overlay regions for different 
+hot spots, or even the main region itself.
+
+When assembling the final layout for all the regions within the BMP, try to
+minimize the total area. This will reduce the final file size. You can place
+the regions anywhere within the bitmap, but it's recommended that you put the
+main region in the upper left corner, with all other regions to the right or
+below the main region, or both. Also, fill all unused space with some bright
+color that doesn't appear in any valid region. That way, when testing your 
+skin, any bad coordinates in the TXT file will cause this color to show up on
+the interface.
+
+================================ THE TXT FILE ================================
+
+The BMP file contains no knowledge of the locations and sizes of regions. It is
+just a single large bitmap. The locations and purposes of the regions that you
+have created are described in the TXT file. Before we get into its format, here
+are some definitions you will need:
+
+   HOTSPOT   - one of the following names: (main, profile, spectate, ship1, 
+               ship2, ship3, ship4, ship5, ship6, ship7, ship8, zones, trace, 
+               zoneup, zonedown, play, quit, proftext, profbox, shipbox, 
+               infobox, zonetext, zonebox, prevprof, nextprof, macros, keydefs,
+               options, advopt), the name is case-insenitive
+
+   COLORDEF  - one of the following names: (zonecolor1, zonecolor2, zonecolor3,
+               zoneselcolor1, zoneselcolor2, profilecolor1, profilecolor2, 
+               profilecolor3, profilecolor4), the name is case-insenitive
+
+   POINT     - an absolute location of a pixel within the BMP specified in 
+               terms of X and Y, where 0,0 is the upper left corner, X goes 
+               positive to the right and Y goes positive downwards, the format
+               for a POINT is "(x,y)", there is a special case POINT "(*)" that
+               is used as a place-holder
+
+   RECTANGLE - a region of pixels within the BMP defined by 2 POINTS, the upper
+               left POINT and the lower right POINT inclusive, the format for a
+               RECTANGLE is "(x1,y1,x2,y2)"
+
+   TICK      - a single update of the interface window, this is the smallest
+               unit of time that the image can be modified, time between ticks
+               is approximately 200ms
+
+   NORM      - describes overlay regions that are to be drawn when a given hot
+               spot is NOT selected or hightlighted, a NORMAL overlay is 
+               defined by an optional count and a POINT, the count determines 
+               how many ticks the overlay will be displayed, if the count is 
+               not specified it defaults to 1
+
+   ALT       - describes overlay regions that are to be drawn when a given hot
+               spot IS selected or hightlighted, an ALTERNATE overlay is 
+               defined by an optional count and a POINT, the count determines 
+               how many ticks the overlay will be displayed, if the count is 
+               not specified it defaults to 1
+
+   COLOR     - defines the RGB (red,green,blue) values for a given color, the
+               format is "(r,g,b)", each component has the range 0 to 255
+
+The general syntax for the TXT file has the following rules:
+
+   The semicolon ";" is the comment character. It, and everything following it
+   on a given line are ignored.
+
+   Blank lines are ignored.
+
+   All whitespace is ignored within a line. You may use as many or as few 
+   spaces and tabs to separate items as you like.
+
+   Lines may end with CR/LF or LF.
+
+   All lines may be in any order. There is no predefinition required.
+
+   Each line that contains a definition must be complete. You can't continue on 
+   the next line. Lines may be up to 255 bytes long.
+
+Each "real" line of TXT file will have the following form:
+
+   HOTSPOT = RECTANGLE [NORM ...] [+ ALT ...]
+
+      or
+
+   COLORDEF = COLOR
+
+The RECTANGLE defines the location of the HOTSPOT, and the NORM and ALT regions
+define how and when to draw changes to the main region.
+
+The only required line in the TXT file is the one defining the main region. It
+may NOT have any defined overlay regions, and may only appear once:
+
+   ;this is a comment
+   main = (0,0,639,479) ; this is a comment
+
+This line defines the main region as a 640x480 pixel image in the upper left
+corner of the BMP.
+
+   profile = (0,0,19,19) + (640,0)
+
+This defines the "profile button". There are no NORM (normal) overlays defined, 
+so when the mouse is NOT over it, it will look as it does in the main region. 
+When the mouse is over it, it will be drawn using the ALT (altrnate) region.
+
+When the list of NORM and/or ALT runs out, it is recycled. To make it alternate 
+between 2 images eack TICK on mouse-over, use:
+
+   profile = (0,0,19,19) + (640,0) (640,20)
+
+To make the second ALT overlay stay on for 3 TICKS, use:
+
+   profile = (0,0,19,19) + (640,0) 3(640,20)
+
+Assume the two ALT overlays above are A and B. The drawing for this HOTSPOT 
+would go: A B B B A B B B A B B B etc.
+
+For all hotspots except main, you can define multiple regions to handle odd
+shapes:
+
+   play = (400,400,435,435) + (800,0)
+   play = (400,435,420,470) + (800,35)
+
+This creates an L-shaped HOTSPOT with 2 regions. Even though it is valid to
+define multiple regions for any HOTSPOT, some of them only use the first one,
+such as the text box HOTSPOTS.
+
+To create a HOTSPOT that animates when the mouse isn't over it:
+
+   quit = (500,500,550,520) (0,750) (0,770)
+
+Note there's no plus "+", which would indicate the start of the ALT list of
+overlays. To make the same HOTSPOT cycle thru 3 different looks about every
+second:
+
+   quit = (500,500,550,520) 5(0,750) 5(0,770) 5(0,790)
+
+To make a HOTSPOT blink between the normal look in the main region and another
+look, you can either make an overlay region which matches that section of the 
+main region which wastes space, or you can use the special POINT type "(*)".
+This acts like a POINT, but causes no overlay to draw. Thus:
+
+   trace = (670,25,702,45) 2(0,750) 5(*)
+
+The "trace button" will draw as: A A X X X A A X X X, where X is the default
+look in the main region.
+
+You can get very fancy with these, as in:
+
+   zones = (400,0,500,30) (0,800) 2(0,805) (*) 2(0,810) + (20,800) 3(20,810)
+   zones = (500,0,600,35) + 6(25,805) (0,810) (30,900)
+   zones = (400,30,500,45) 3(0,810) (10,805)
+
+This defines a very complicated HOTSPOT for the "zones button". One of the
+regions has both NORM and ALT overlays, one has just ALT overlays, and one has
+just NORM overlays. Note that these 3 lines to do not have to be together in 
+the TXT file, but there's really no reason not to put them together. Also note 
+that the RECTANGLES defined by the 3 regions do not have to form a single shape. 
+You could make a definition for a button so that, when the mouse is over it, 
+something else on the interface blinks, etc.
+
+For the color definitions, do this:
+
+   zoneselcolor1 = (255,0,255)  ; makes zone selection bar bright purple
+
+A final note on spacing within lines. The following lines are all identical:
+
+   profile=(0,0,20,20)(800,0)(810,0)+(900,0)2(910,0)
+
+   profile = (0,0,20,20) (800,0) (810,0) + (900,0) 2(910,0)
+
+   profile = ( 0 , 0 , 20 , 20 )( 800 , 0 )( 810 , 0 )+( 900 , 0 ) 2( 910 , 0 )
+
+   profile        =(0,0,     20,20)(800    ,0)(810,0)+(    900,0)2     (910,0)
+
+============================== HOTSPOT DETAILS ===============================
+
+Now for the details on each of the hotspots, what they are, how they are used,
+and any size requirements. Note that there are many more possibilities not yet
+included. As needs and requests come, I will expand this list. The names are
+listed here in CAPS so they stand out. HOTSPOT names are case-insensitive.
+
+MAIN     This is the only required HOTSPOT in a skin. There can be only one of
+         them, and they can have no NORM or ALT overlays. This defines the size
+         of the interface using this skin, and is the default image. A skin
+         with only a main region is a valid skin all by itself, but would not
+         display any useful interaction information. This area should be at 
+         least 500 pixels wide, so as not to wrap the menu bar. Also, note that
+         it should fit on the display, and that a few people use 800x600 screen
+         resolution. As a comparison, the original SS "main region" was 560x380
+         pixels.
+
+PROFBOX  This is the area that contains all profile related information
+         (profile text, profile button). It is used to display profile help 
+         text in the INFOBOX, and to allow the mouse wheel to select 
+         previous/next profiles.
+
+SHIPBOX  This is the area that contains all ship related information (ship
+         selection buttons). It is used to display ship help text in the 
+         INFOBOX, and to allow the mouse wheel to select previous/next ships.
+
+INFOBOX  This is the area where the help text is displayed based on which 
+         HOTSPOT the mouse is over. If included in the skin, it should be large
+         enough to fit about 120 8x12 characters wrapped into as many lines as 
+         necessary.
+
+ZONEBOX  This is the area that contains all zone related information (zones
+         button, maybe trace button, zone list headers, zone text, and scroll
+         buttons). It is used to display zone help text in the INFOBOX, and to 
+         allow the mouse wheel to scroll the zone list up/down.
+
+PROFTEXT This is the area where the 4 lines of profile text are drawn (profile
+         name, player name, macro set name, and keydef name). As of now, these
+         text lines are stacked vertically with a pitch of 16 pixels. The 
+         maximum text length is 23 characters, so the minimum size is 184x64.
+         You should put appropriate labels in the skin image itself. I may
+         break this HOTSPOT into 4 separate ones for each item so you can lay 
+         them out horzontally, or even exclude one or more of them.
+
+ZONETEXT This is the area where the the zone list, pings, and player counts are
+         displayed. These text lines are stacked vertically with a pitch of 14 
+         pixels. A single line consists of a 3-digit ping time (or graph), a 
+         space, as many charcaters as will fit in of the zone name, another
+         space, and a 3-digit player count. Each character is 8x12, so if your
+         ZONETEXT region is 160x140, you could fit 10 lines, and each line 
+         could have 20 characters, 8 of which are non-zone name characters,
+         leaving 16 for the zone name. You should put appropriate labels in the 
+         skin image itself for the columns of data.
+
+PROFILE  This defines the button that invokes the profile dialog.
+
+PREVPROF This defines the button that selects the previous profile. The NORM
+         overlay is drawn if a previous profile exists. The ALT overlay is 
+         drawn if the mouse is over the region AND a previous profile exists.
+
+NEXTPROF This defines the button that selects the next profile. The NORM
+         overlay is drawn if a next profile exists. The ALT overlay is drawn 
+         if the mouse is over the region AND a next profile exists.
+
+MACROS   This defines the button that invokes the macros dialog.
+
+KEYDEFS  This defines the button that invokes the keydefs dialog.
+
+SPECTATE This defines the "button" that selects spectator mode. Do not put an
+         actual spectate image into the skin for this region. It is drawn 
+         using an internal image. The first rectangle specified for this region
+         defines the location where the image will be drawn. Any subsequent
+         rectangles define the extra pieces of the shape of the region. This is
+         also true of all SHIPx regions.
+
+SHIP1    This defines the "button" that selects ship 1. Do not put actual ship
+         images into the skin for the ship selections. They are drawn 
+         automatically based on what ship set is being used. This applies to 
+         all other ship buttons also.
+
+SHIP2    This defines the "button" that selects ship 2.
+
+SHIP3    This defines the "button" that selects ship 3.
+
+SHIP4    This defines the "button" that selects ship 4.
+
+SHIP5    This defines the "button" that selects ship 5.
+
+SHIP6    This defines the "button" that selects ship 6.
+
+SHIP7    This defines the "button" that selects ship 7.
+
+SHIP8    This defines the "button" that selects ship 8.
+
+ZONES    This defines the button that invokes the download zones dialog.
+
+TRACE    This defines the button that invokes the zone trace dialog.
+
+ZONEUP   This defines the "button" that scrolls the zone list up. The NORM
+         overlay is drawn if the zone list can be scrolled up. The ALT overlay 
+         is drawn if the mouse is over the region AND a the zone list can be
+         scrolled up. (For backward compatibility, if there is no NORM overlay
+         defined, the ALT overlay is drawn if the zone list can be scrolled 
+         up, so it doesn't change when moused over.)
+
+ZONEDOWN This defines the "button" that scrolls the zone list down. The NORM
+         overlay is drawn if the zone list can be scrolled down. The ALT 
+         overlay is drawn if the mouse is over the region AND a the zone list 
+         can be scrolled down. (For backward compatibility, if there is no NORM
+         overlay defined, the ALT overlay is drawn if the zone list can be 
+         scrolled down, so it doesn't change when moused over.)
+
+PING     This defines the button that toggles ping number and graph. It is
+         typically the ping heading for the zone list.
+
+OPTIONS  This defines the button that invokes the options dialog.
+
+ADVOPT   This defines the button that invokes the advanced options dialog.
+
+PLAY     This defines the button that plays the game.
+
+QUIT     This defines the button that quits the game.
+
+=================================== COLORS ===================================
+
+If any of the following color definitions are omitted from the skin definition,
+the default color is used.
+
+ZONECOLOR1    Color for text and ping graph bars of zones with low ping.
+
+ZONECOLOR2    Color for text and ping graph bars of zones with medium ping.
+
+ZONECOLOR3    Color for text and ping graph bars of zones with high ping.
+
+ZONESELCOLOR1 Color of the current zone selection bar.
+
+ZONESELCOLOR2 Color of the current zone selection bar outline. Make this the
+              same as ZONESELCOLOR1 to make the selection bar a single color.
+
+PROFILECOLOR1 Color for the profile name text.
+
+PROFILECOLOR2 Color for the player name text.
+
+PROFILECOLOR3 Color for the macro definition name text.
+
+PROFILECOLOR4 Color for the key definition name text.
+
+==================================== TIPS ====================================
+
+TIP #1: Start your first skin with just a main region. Make sure it works in 
+Continuum by itself. You won't be able to see any of the info since no other 
+HOTSPOTS are defined, but at least you can see if the SKN file is working and 
+that the size is correct.
+
+TIP #2: Add entries to the TXT file a few at a time and test to see how it 
+looks and how things fit and line up. The BMP file can be as complex as you
+like, but if you find that you drew seomthing the wrong size you will have to 
+go back to your image editor and redraw things, which may invalidate many 
+sections of the TXT file.
+
+TIP #3: If you are using an image editor that supports layers, keep EVERYTHING
+in a separate layer. This will save you a lot of hassle later if you need to 
+make major edits.
+
+TIP #4: If you define non-rectangular regions (circles or rounded shapes), you
+should be able to create a HOTSPOT that reasonably matches the shape with only
+a few regions. So don't be afraid to use whatever shape looks best.
+
+==================================== FAQ =====================================
+
+Feel free to post comments and questions to the "Development Board" link at 
+"http://www.subspacehq.com/".
+
+================================ END OF FILE =================================

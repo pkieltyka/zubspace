@@ -1,0 +1,22 @@
+# Local Linux collector only; separate from the game/container stack.
+services:
+  prometheus:
+    container_name: zubspace-prom_1
+    image: docker.io/prom/prometheus:v3.15.0
+    network_mode: host
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.listen-address=127.0.0.1:9090
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - data:/prometheus
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  data:

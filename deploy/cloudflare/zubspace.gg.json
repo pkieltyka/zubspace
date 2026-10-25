@@ -1,0 +1,77 @@
+{
+  "description": "Desired Cloudflare state for zubspace.gg. Apply with: node scripts/cloudflare.mjs plan|apply (deploy/README.md). Tunnel services take ZUBSPACE_* values from deploy/<env>/compose.env. Tunnel tokens are not managed here; they live only on the host.",
+  "zone": "zubspace.gg",
+  "settings": {
+    "ssl": "strict",
+    "always_use_https": "on",
+    "min_tls_version": "1.2",
+    "browser_cache_ttl": 0,
+    "cache_level": "aggressive",
+    "email_obfuscation": "off",
+    "rocket_loader": "off"
+  },
+  "tunnels": {
+    "zubspace-prod": {
+      "env": "prod",
+      "ingress": [
+        { "hostname": "zubspace.gg", "service": "http://127.0.0.1:${ZUBSPACE_CLIENT_PORT}" },
+        { "hostname": "server.zubspace.gg", "path": "^/v1/(?:status|players|ping|zones(?:/[a-z0-9-]+(?:/(?:players|status))?)?)$", "service": "http://127.0.0.1:${ZUBSPACE_CLIENT_PORT}" },
+        { "service": "http_status:404" }
+      ]
+    },
+    "zubspace-dev": {
+      "env": "dev",
+      "ingress": [
+        { "hostname": "dev.zubspace.gg", "service": "http://127.0.0.1:${ZUBSPACE_CLIENT_PORT}" },
+        { "hostname": "dev-server.zubspace.gg", "path": "^/v1/(?:status|players|ping|zones(?:/[a-z0-9-]+(?:/(?:players|status))?)?)$", "service": "http://127.0.0.1:${ZUBSPACE_CLIENT_PORT}" },
+        { "service": "http_status:404" }
+      ]
+    }
+  },
+  "dns": [
+    { "type": "CNAME", "name": "zubspace.gg", "tunnel": "zubspace-prod", "proxied": true, "comment": "prod game client via tunnel zubspace-prod" },
+    { "type": "CNAME", "name": "www.zubspace.gg", "content": "zubspace.gg", "proxied": true, "comment": "redirected to https://zubspace.gg by a Single Redirect rule" },
+    { "type": "CNAME", "name": "server.zubspace.gg", "tunnel": "zubspace-prod", "proxied": true, "comment": "prod game server public API (/v1 status, players, ping, zones) via tunnel zubspace-prod" },
+    { "type": "CNAME", "name": "dev.zubspace.gg", "tunnel": "zubspace-dev", "proxied": true, "comment": "dev game client via tunnel zubspace-dev" },
+    { "type": "CNAME", "name": "dev-server.zubspace.gg", "tunnel": "zubspace-dev", "proxied": true, "comment": "dev game server public API (/v1 status, players, ping, zones) via tunnel zubspace-dev" },
+    { "type": "CNAME", "name": "6f6491dc9ba92818e9d8a2bee3051552.zubspace.gg", "content": "verify.bing.com", "proxied": false, "comment": "Bing Webmaster Tools site verification; must stay DNS-only" },
+    { "type": "TXT", "name": "zubspace.gg", "content": "\"google-site-verification=HGgmDvnX2felp0bGCfznc9N81HJ_9RVmiGYTpkpPCZU\"", "proxied": false, "ttl": 3600, "comment": "Google Search Console domain verification; Google rechecks it, so keep it" }
+  ],
+  "rulesets": {
+    "http_request_dynamic_redirect": [
+      {
+        "description": "www.zubspace.gg -> https://zubspace.gg",
+        "expression": "(http.host eq \"www.zubspace.gg\")",
+        "action": "redirect",
+        "action_parameters": {
+          "from_value": {
+            "preserve_query_string": true,
+            "status_code": 301,
+            "target_url": { "expression": "concat(\"https://zubspace.gg\", http.request.uri.path)" }
+          }
+        }
+      }
+    ],
+    "http_request_cache_settings": [
+      {
+        "description": "Never cache the game server API (/v1/*)",
+        "expression": "(starts_with(http.request.uri.path, \"/v1/\"))",
+        "action": "set_cache_settings",
+        "action_parameters": { "cache": false }
+      }
+    ],
+    "http_ratelimit": [
+      {
+        "description": "WebRTC offers: 60 per 10s per IP",
+        "expression": "(http.request.uri.path eq \"/v1/rtc/offer\")",
+        "action": "block",
+        "ratelimit": {
+          "characteristics": ["cf.colo.id", "ip.src"],
+          "mitigation_timeout": 10,
+          "period": 10,
+          "requests_per_period": 60
+        }
+      }
+    ]
+  }
+}

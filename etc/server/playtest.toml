@@ -1,0 +1,27 @@
+# Local recorded playtests. Paths are relative to the repository root.
+# Unspecified values use the server's normal compiled defaults.
+# File < ZUBSPACE_SERVER_* environment < CLI overrides.
+[server]
+bind = "127.0.0.1:9001"
+zone = "chaos-zone"
+zone_bundle_root = "assets/zones"
+allow_zone_overrides = true
+max_players = 500
+tick_rate = 60
+maxed_spawn_loadout = true
+bot_count = 15
+bot_ship_types = "1,4,5,8"
+
+# Detailed gameplay/session events without per-packet transport chatter.
+# ZUBSPACE_SERVER_LOG_LEVEL=info selects a lower-overhead baseline.
+log_level = "debug"
+# Prefixes include rtc_sctp, rtc_dtls, rtc_ice and their submodules.
+# Set ZUBSPACE_SERVER_LOG_FILTER="" for full transport diagnostics.
+log_filter = "rtc=info,webrtc=info"
+log_format = "json"
+# Direct runs write stdout. The recording launcher selects a unique server.log
+# via ZUBSPACE_SERVER_LOG_FILE, separating JSON events from console errors.
+log_file = ""
+metrics_listen = "127.0.0.1:9100"
+# Compact opt-in client presentation windows, uploaded about every 20 seconds.
+client_debug_trace = true

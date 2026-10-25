@@ -1,0 +1,34 @@
+{
+  "accepted": [
+    "stun:example.com:3478",
+    "stun:127.0.0.1:3478",
+    "turn:turn.example.com:3478?transport=udp"
+  ],
+  "rejected": [
+    "stun:stun.example.test",
+    "STUN:stun.example.test:3478",
+    "stun:",
+    "stun::3478",
+    "stun:stun.example.test:3478?transport=tcp",
+    "turn:turn.example.test:3478",
+    "turn:turn.example.test:3478?transport=UDP",
+    "stun:example.com:03478",
+    "stun:example.com:0",
+    "turn:turn.example.com:0?transport=udp",
+    "stun:EXAMPLE.com:3478",
+    "stun:127.1:3478",
+    "stun:0x7f000001:3478",
+    "stun:0177.0.0.1:3478",
+    "stun:127.00.0.1:3478",
+    "stun:%65xample.com:3478",
+    "stun:[2001:db8::1]:3478",
+    "stun:[2001:DB8::1]:3478",
+    "stun:[2001:0db8::1]:3478",
+    "stun:[::ffff:192.0.2.128]:3478",
+    "stun:[::ffff:c000:280]:3478",
+    "stun:[::::]:3478",
+    "stuns:stun.example.test:5349",
+    "turns:turn.example.test:5349?transport=udp",
+    "turn:turn.example.test:3478?transport=tcp"
+  ]
+}

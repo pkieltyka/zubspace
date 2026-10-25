@@ -1,0 +1,25 @@
+# The player join/leave notifier (notifier/) on the production host, run by
+# rootless Podman as `peter`, independent of the prod and dev projects.
+# `scripts/deploy-notifier.sh` installs this file into ~/zubspace/notifier/
+# and runs
+#
+#   podman compose --project-name zubspace-notifier --env-file release.env up -d
+#
+# release.env holds NOTIFIER_TAG, the first 12 hex digits of the deployed
+# commit. The one host-only file is notifier.json, the real config with the
+# Slack webhook (mode 600, owned by the container's `node` user, never
+# committed; notifier/etc/notifier.sample.json shows its shape).
+
+services:
+  notifier:
+    image: localhost/zubspace/notifier:${NOTIFIER_TAG:?NOTIFIER_TAG is unset}
+    pull_policy: never
+    # podman-restart.service brings back only `always` containers after a boot.
+    restart: always
+    network_mode: host
+    volumes:
+      - ./notifier.json:/app/etc/notifier.json:ro
+    cpu_shares: 256
+    mem_limit: 256m
+    logging:
+      driver: journald

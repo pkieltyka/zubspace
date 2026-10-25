@@ -1,0 +1,31 @@
+# Prod Prometheus, listening on 127.0.0.1:9090 on the host. From a workstation:
+#   ssh -L 9090:127.0.0.1:9090 peter@zubspace-prod   then open http://127.0.0.1:9090
+global:
+  scrape_interval: 15s
+  scrape_timeout: 5s
+  evaluation_interval: 15s
+
+# Whichever limit is reached first applies. Size is a TSDB retention target,
+# not a filesystem quota; the WAL/head can temporarily exceed it.
+storage:
+  tsdb:
+    retention:
+      time: 30d
+      size: 5GB
+
+scrape_configs:
+  - job_name: zubspace
+    static_configs:
+      - targets: ["127.0.0.1:9100"]
+        labels: { env: prod }
+  - job_name: cloudflared
+    static_configs:
+      - targets: ["127.0.0.1:20241"]
+        labels: { env: prod }
+  - job_name: node
+    static_configs:
+      - targets: ["127.0.0.1:9180"]
+  - job_name: prometheus
+    static_configs:
+      - targets: ["127.0.0.1:9090"]
+        labels: { env: prod }

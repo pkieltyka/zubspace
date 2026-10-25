@@ -1,0 +1,12 @@
+/target/
+/.claude/
+/.codex/
+/.specs_skill_state/
+/assets/banners/
+/assets/logs/
+/assets/screenshots/
+/vendor/**/target/
+/dist/
+/.debug/
+# Operator credentials (Cloudflare API token, tunnel tokens). Never commit.
+/.secrets/

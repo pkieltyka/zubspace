@@ -1,0 +1,111 @@
+# syntax=docker.io/docker/dockerfile:1.26.0
+#
+# zubspace game server container.
+#
+# Chaos and Extreme remain embedded fallbacks, while the runtime image
+# also carries authenticated disk bundles under `/app/assets/zones` so an
+# operator can mount a replacement catalog without rebuilding. Exposes one TCP port
+# (9001 by default) for HTTP WebRTC signaling and health checks:
+#
+#   - HTTP signaling: `POST /v1/rtc/offer` for WebRTC SDP exchange
+#   - HTTP health: `GET /v1/status`
+#   - runtime zone catalog: `GET /v1/zones`
+#
+# Build:   docker build -f Dockerfile.server -t zubspace/server .
+# Local-only run: docker run --rm -p 127.0.0.1:9001:9001 zubspace/server
+# Public deployments must keep 9001 behind the trusted proxy described in
+# docs/deployment.md and publish the configured UDP media range separately.
+#
+# Override the bind address via env or TOML:
+#   docker run -e ZUBSPACE_SERVER_BIND=0.0.0.0:9001 ...
+#   docker run -v $PWD/config:/etc/zubspace ... \
+#     zubspace/server --config /etc/zubspace/zubspace_server.toml
+
+# -----------------------------------------------------------------------------
+# Stage 1: builder
+# -----------------------------------------------------------------------------
+ARG ZUBSPACE_BUILD_COMMIT
+FROM docker.io/library/node:26-trixie-slim AS notice-node
+FROM docker.io/library/rust:1.97.1-trixie AS builder
+
+COPY --from=notice-node /usr/local/bin/node /usr/local/bin/node
+
+WORKDIR /build
+
+# Cache the dependency graph in a separate layer so application source edits
+# don't invalidate it. Copy every dependency input plus a stub main so `cargo
+# build` can resolve the graph without seeing the real application source.
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY build.rs ./
+# Cargo.toml patches the RTC crates to audited local sources. Keep them in the
+# dependency-cache layer so normal application source edits still reuse the
+# compiled dependency graph.
+COPY vendor/rtc-0.21.1 ./vendor/rtc-0.21.1
+COPY vendor/rtc-sctp-0.21.1 ./vendor/rtc-sctp-0.21.1
+COPY vendor/webrtc-0.21.1 ./vendor/webrtc-0.21.1
+# build.rs requires a full commit even for the stub. A fixed placeholder keeps
+# this layer independent of the revision; the stub's zubspace outputs are
+# deleted below, and the real build reruns build.rs with the actual commit.
+RUN mkdir -p src/bin/zubspace_server \
+    && echo 'fn main() {}' > src/main.rs \
+    && echo 'fn main() {}' > src/bin/zubspace_server.rs \
+    && ZUBSPACE_BUILD_COMMIT=0000000000000000000000000000000000000000 \
+       cargo build --locked --release --bin zubspace_server \
+    && rm -rf src target/release/.fingerprint/zubspace-*
+
+# Copy the real source and build the actual binary.
+COPY src ./src
+COPY assets ./assets
+COPY config ./config
+COPY tools/client_build_info.mjs ./tools/client_build_info.mjs
+ARG ZUBSPACE_BUILD_COMMIT
+ENV ZUBSPACE_BUILD_COMMIT=${ZUBSPACE_BUILD_COMMIT}
+ENV ZUBSPACE_REQUIRE_BUILD_REVISION=1
+RUN node --input-type=module -e 'import {sourceRevision} from "./tools/client_build_info.mjs"; sourceRevision(process.cwd());' \
+    && cargo build --locked --release --bin zubspace_server \
+    && strip target/release/zubspace_server
+
+# -----------------------------------------------------------------------------
+# Stage 2: runtime
+# -----------------------------------------------------------------------------
+FROM docker.io/library/debian:13.6-slim AS runtime
+ARG ZUBSPACE_BUILD_COMMIT
+LABEL org.opencontainers.image.revision=${ZUBSPACE_BUILD_COMMIT}
+
+# CA certs are useful if the server ever needs to dial out (TURN auth,
+# telemetry, etc.). curl provides the Compose HTTP health probe.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd --system --create-home --uid 10001 zubspace
+
+WORKDIR /app
+
+COPY --from=builder /build/target/release/zubspace_server /usr/local/bin/zubspace_server
+COPY config /app/config
+COPY assets/zones /app/assets/zones
+COPY LICENSE ASSETS.md /app/
+COPY docs/browser-runtime-provenance.md docs/chaos_zone_settings.md /app/docs/
+
+# The default container config is the bundled one, bound to all interfaces so
+# a bridged `docker run -p 9001:9001` is reachable; the host port mapping
+# decides what is exposed. It is a file rather than ENV because environment
+# values override the TOML: a mounted config (deploy/<env>/zubspace_server.toml)
+# must stay authoritative. Container logs go to stdout for Docker/Compose to
+# collect; a mounted operator config can still select its own log_file.
+# Server-owned bots stay off (bundled bot_count = 0);
+# `docker run -e ZUBSPACE_SERVER_BOT_COUNT=4 ...` still starts four.
+RUN sed -e 's|^bind = .*|bind = "0.0.0.0:9001"|' \
+        -e 's|^log_file = .*|log_file = ""|' \
+        /app/config/zubspace_server.toml > /app/config/container.toml \
+    && grep -qx 'bind = "0.0.0.0:9001"' /app/config/container.toml \
+    && grep -qx 'log_file = ""' /app/config/container.toml
+
+USER zubspace
+
+EXPOSE 9001/tcp 9002-9501/udp
+
+# Override with `--config /path/...` at `docker run` time to use a mounted TOML.
+ENTRYPOINT ["/usr/local/bin/zubspace_server"]
+CMD ["--config", "/app/config/container.toml"]

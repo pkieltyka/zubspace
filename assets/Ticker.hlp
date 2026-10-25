@@ -1,0 +1,98 @@
+Press F1 for help and commands (keep pressing F1 for more help)
+
+Use the ARROW KEYS to maneuver your ship around.  CTRL fires GUNS (BULLETS), TAB fires BOMBS
+
+Your ENERGY (blue bar at top) is your hit points. When you get hit, you lose ENERGY
+ENERGY is also shown as a numerical value in big blue letters at top right
+You also use energy to fire your weapons.  The more you fire, the weaker you are
+When your ENERGY gets low, the bar turns YELLOW (warning) and then RED (danger), and your current ENERGY value appears next to your ship
+When all your ENERGY is gone, you are dead
+Your ship's ENERGY will RECHARGE after a certain amount of time.  Keep your ENERGY high and use it wisely
+
+Press ESC and then any number between 1 and 8 to change ships.  Each number is a different ship
+In most ZONES, different ships have different abilities.  Some ZONES only allow certain ships
+
+Type ?status to see your current ship's status
+
+Destroy ships with BLUE names, they are enemies
+Killing enemy ships gives you points, or helps complete game objective
+Ships with YELLOW names are on your TEAM (FREQ) and are friendlies, do not shoot them
+Ships with RED names are carrying FLAGS or a POWERBALL
+
+Press ESC and then F6 to turn off these help messages
+
+Your RADAR is at the bottom right of the screen and shows where you, other ships, and various items are
+Press ALT to see a view of the entire LEVEL MAP (MAP)
+The blinking YELLOW dot on RADAR or MAP is you
+Your COORDINATES are displayed just above the RADAR as a letter (horizontal) and a number (vertical)
+GREEN dots on RADAR are PRIZES/upgrades.  Go get them if your ship is weak
+YELLOW dots on RADAR are friendly ships.  Dark yellow dots are DECOYS
+Release a DECOY, if you have one, by pressing F5
+BLUE dots on RADAR are enemy ships.  Light blue are strong ships and dark blue are weak
+RED dots on RADAR are FLAG or enemy POWERBALL carriers
+Friendly POWERBALL carriers are large YELLOW dots and a loose POWERBALL is a blinking RED dot
+POWERBALLS also appear on the MAP so you can find them
+Blinking WHITE dots on radar are MINES - only certain ships can see MINES on RADAR
+
+All you have to do to send a PUBLIC message is type it, and press ENTER
+Type // or ' before a message to send it to your TEAM (FREQ) only
+Activate the upper left PLAYER LIST using F2.  Keep pressing F2 to see different sort options
+All the players in your ARENA are listed in upper left box, as well as what FREQ they are on, and more
+Use PGUP and PGDN to TICK/select a player with the red TICKER in the upper left box
+TICK a player and type / before your message to send them a PRIVATE message
+
+Bty is your BOUNTY.  This is how many points you are worth to kill
+Your BOUNTY is shown next to the small red targeting recticle at top right
+Enemy BOUNTIES are displayed on-screen in parenthesis next to their names.  You will receive their Bty in points if you kill them
+Getting GREEN PRIZES is called GREENING and can also increase your BOUNTY.  High BOUNTY = strong ship, low BOUNTY = weak ship
+PRIZES can upgrade your weapons, your ENERGY, and give your ship many other new abilities.
+Killing weak ships is called NEGGING
+
+In a SAFE AREA you cannot be hurt by enemy fire.  Use CTRL to stop in them.  Watch the time limit
+
+Ghz is the frequency (FREQ or TEAM) that you are on
+To change frequencies (FREQS or TEAMS), type = and then the freq number (example: =09)
+
+The right of the screen shows your ship's equipment, weapons, and abilities
+The first two right displays show your GUN (MULTIFIRE on/off) and BOMB PROXIMITY status, as well as weapon POWER LEVEL (indicated by color)
+Level 1 (L1) Bombs and Bullets are RED and weak.  L2 weapons are YELLOW, and L3 weapons are BLUE and the most powerful
+With BOMB PROXIMITY, your BOMBS will detonate when they are close to enemy ships (detonate close to enemy ships to cause more damage)
+The middle right displays show your STEALTH (HOME) and CLOAK (SHIFT-HOME) status
+The last two displays show your XRADAR (END) and ANTIWARP (SHIFT-END) status
+STEALTH keeps you off enemy RADAR, and CLOAK keeps you off enemy screen.  XRADAR counters STEALTH AND CLOAK
+ANTIWARP prevents ships from WARPING or using PORTALS near you.  STEALTH, CLOAK, XRADAR, and ANTIWARP all use ENERGY
+
+Holding down SHIFT-THRUST activates your AFTERBURNERS.  This uses ENERGY
+Press SHIFT-TAB to lay a mine
+You can WARP by pressing INSERT, but only when you are at full ENERGY
+You can toggle MULTIFIRE bullets on and off using the DEL key
+SHRAPNEL are the bullets that a bomb releases when it explodes
+To form a turret, use PGUP and PGDN to tick the driver, and then press F7
+
+BURSTS, REPELS, DECOYS, THORS, BRICKS, ROCKETS, and PORTALS, and are all called SPECIALS or ITEMS
+SPECIALS each serve different purposes and can only be used a limited number of times
+The left of your screen shows what SPECIALS you have.  Sometimes you may not have any
+F6 will fire a THOR'S HAMMER, SHIFT-CTRL uses REPELS, and SHIFT-DEL fires BURSTS
+Pressing F3 will activate your ROCKETS, and F4 lays a BRICK
+Press SHIFT+INSERT to activate a PORTAL point, and then press INSERT again to warp to that PORTAL
+You don't need full ENERGY to WARP to a PORTAL
+
+SHIFT-PGDN and SHIFT-PGUP decrease and increase the size of the user box, respectively
+
+When you pick up a PRIZE (GREEN), other weak ships on your TEAM also receive the upgrade
+
+In a FLAGGING/WARZONE/TURF/JACKPOT/BASE game, collect or capture as many flags as you can to win the game
+Sometimes FLAGS are kept in BASES that you should defend from attack, while also attacking enemy FLAG BASES
+
+FLAGS and POWERBALLS can only be held for a limited time.  Watch FLAG timer at top right, or BALL timer next to ship 
+
+In a POWERBALL game, get the POWERBALL into the RED GOAL (appears RED on RADAR and MAP, but BLUE on-screen), and defend the YELLOW GOAL
+Pass the POWERBALL to teammates often (CTRL, TAB or INSERT) to advance the ball
+
+You enter a Subspace ZONE from the main menu.  Each ZONE usually has a theme
+A ZONE can have many ARENAS.  ARENAS can have different settings and rules in the same ZONE, but they usually follow the ZONE's theme
+
+Press ESC + A (or type ?arena) to see all the ARENAS open in your ZONE. Use PGUP and PGDN to choose an ARENA, and press ENTER to switch to that ARENA. ?go arenaname also works
+
+ZONES are run by SYSOPS.  MODERATORS (MODS) have powers to help the SYSOPS maintain order and fair-play in a ZONE
+Type ?help and then a message if you ever need to contact a MOD for any assistance

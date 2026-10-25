@@ -1,0 +1,18 @@
+global:
+  scrape_interval: 5s
+  scrape_timeout: 2s
+  evaluation_interval: 15s
+
+# Whichever limit is reached first applies. Size is a TSDB retention target,
+# not a filesystem quota; the WAL/head can temporarily exceed it.
+storage:
+  tsdb:
+    retention:
+      time: 7d
+      size: 1GB
+
+scrape_configs:
+  - job_name: zubspace
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["127.0.0.1:9100"]

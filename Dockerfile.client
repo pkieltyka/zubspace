@@ -1,0 +1,104 @@
+# syntax=docker.io/docker/dockerfile:1.26.0
+#
+# zubspace game client container.
+#
+# Builds the WASM client (`cargo build --target wasm32-unknown-unknown
+# --release --bin zubspace`) via `tools/build_wasm_release.mjs`, which
+# writes the production artifact bundle to `dist/`:
+#
+#   dist/
+#   ├── index.html           (rewritten to point at zubspace.wasm)
+#   ├── zubspace.wasm        (release build)
+#   ├── js/mq_js_bundle.js   (macroquad JS glue)
+#   └── BUILD_INFO.json      (git rev + asset hashes)
+#
+# The runtime stage is nginx serving the bundle plus a reverse proxy
+# for the game server's public /v1 API (signaling, status, players, zones)
+# so the browser can hit a single origin.
+#
+# Build: docker build -f Dockerfile.client -t zubspace/client .
+# Run:   docker run --rm -p 7000:80 zubspace/client
+#
+# The proxy upstream is configured at build time via the
+# ZUBSPACE_SERVER_UPSTREAM build arg (default: zubspace-server:9001).
+
+ARG ZUBSPACE_BUILD_COMMIT
+# -----------------------------------------------------------------------------
+# Stage 1: WASM builder
+# -----------------------------------------------------------------------------
+FROM docker.io/library/node:26-trixie-slim AS node
+
+FROM docker.io/library/rust:1.97.1-trixie AS builder
+
+# Keep the JavaScript build helper on the current Node 26 release line instead
+# of relying on Debian's older nodejs package.
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+
+# wasm-ld (from the LLVM `lld` package) is the linker macroquad uses on
+# wasm32-unknown-unknown. nodejs runs `tools/build_wasm_release.mjs`.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends lld \
+    && rm -rf /var/lib/apt/lists/* \
+    && rustup target add wasm32-unknown-unknown
+
+WORKDIR /build
+
+# Cache deps before pulling in application source. Same stub trick as the
+# server Dockerfile: manifests or vendored dependency changes invalidate this
+# layer, while normal source edits retain it.
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY build.rs ./
+# Cargo.toml patches the RTC crates to audited local sources. Copy them before
+# the stub build so both dependency caching and the later WASM build resolve
+# the same patched crates without invalidating on unrelated source changes.
+COPY vendor/rtc-0.21.1 ./vendor/rtc-0.21.1
+COPY vendor/rtc-sctp-0.21.1 ./vendor/rtc-sctp-0.21.1
+COPY vendor/webrtc-0.21.1 ./vendor/webrtc-0.21.1
+# The stub needs a full commit for build.rs; see Dockerfile.server.
+RUN mkdir -p src/bin/zubspace_server \
+    && echo 'fn main() {}' > src/main.rs \
+    && echo 'fn main() {}' > src/bin/zubspace_server.rs \
+    && ZUBSPACE_BUILD_COMMIT=0000000000000000000000000000000000000000 \
+       RUSTFLAGS="-C linker=/usr/bin/wasm-ld -C linker-flavor=wasm-ld -C link-arg=--allow-undefined" \
+       cargo build --release --target wasm32-unknown-unknown --bin zubspace \
+    && rm -rf src target/wasm32-unknown-unknown/release/.fingerprint/zubspace-*
+
+# Copy the real source + the prebuild script + the dev index.html.
+COPY src ./src
+COPY assets ./assets
+COPY js ./js
+COPY index.html ./
+COPY tools ./tools
+COPY LICENSE ASSETS.md ./
+COPY docs/browser-runtime-provenance.md docs/chaos_zone_settings.md ./docs/
+ARG ZUBSPACE_BUILD_COMMIT
+ENV ZUBSPACE_BUILD_COMMIT=${ZUBSPACE_BUILD_COMMIT}
+ENV ZUBSPACE_REQUIRE_BUILD_REVISION=1
+
+# `tools/build_wasm_release.mjs` runs `cargo build`, then rewrites
+# `index.html` to point at the optimized wasm and writes the version
+# stamp into `dist/BUILD_INFO.json`.
+RUN RUSTFLAGS="-C linker=/usr/bin/wasm-ld -C linker-flavor=wasm-ld -C link-arg=--allow-undefined" \
+    node tools/build_wasm_release.mjs
+
+# -----------------------------------------------------------------------------
+# Stage 2: nginx runtime
+# -----------------------------------------------------------------------------
+FROM docker.io/library/nginx:1.31.3-alpine3.24 AS runtime
+ARG ZUBSPACE_BUILD_COMMIT
+LABEL org.opencontainers.image.revision=${ZUBSPACE_BUILD_COMMIT}
+
+# Allow swapping the upstream at build time (e.g. for compose vs k8s).
+ARG ZUBSPACE_SERVER_UPSTREAM=zubspace-server:9001
+
+COPY docker/nginx.conf.template /etc/nginx/templates/default.conf.template
+
+ENV ZUBSPACE_SERVER_UPSTREAM=${ZUBSPACE_SERVER_UPSTREAM}
+ENV ZUBSPACE_CLIENT_LISTEN_ADDRESS=0.0.0.0
+ENV ZUBSPACE_CLIENT_LISTEN_PORT=80
+# Empty sends no X-Robots-Tag; dev's deploy sets `noindex`.
+ENV ZUBSPACE_ROBOTS_TAG=""
+
+COPY --from=builder /build/dist /usr/share/nginx/html
+
+EXPOSE 80

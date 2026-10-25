@@ -1,0 +1,227 @@
+[
+  {
+    "raw": "Ace",
+    "normalized": "Ace",
+    "valid": true
+  },
+  {
+    "raw": "Az09!*",
+    "normalized": "Az09!*",
+    "valid": true
+  },
+  {
+    "raw": "ABCDEFGHIJKL!*",
+    "normalized": "ABCDEFGHIJKL!*",
+    "valid": true
+  },
+  {
+    "raw": " Ace!* ",
+    "normalized": "Ace!*",
+    "valid": true
+  },
+  {
+    "raw": " ",
+    "normalized": "",
+    "valid": false
+  },
+  {
+    "raw": "\tAce!*\t",
+    "normalized": "Ace!*",
+    "valid": true
+  },
+  {
+    "raw": "\t",
+    "normalized": "",
+    "valid": false
+  },
+  {
+    "raw": "\r\nAce!*\r\n",
+    "normalized": "Ace!*",
+    "valid": true
+  },
+  {
+    "raw": "\r\n",
+    "normalized": "",
+    "valid": false
+  },
+  {
+    "raw": "\u0085Ace!*\u0085",
+    "normalized": "Ace!*",
+    "valid": true
+  },
+  {
+    "raw": "\u0085",
+    "normalized": "",
+    "valid": false
+  },
+  {
+    "raw": "\u00a0Ace!*\u00a0",
+    "normalized": "Ace!*",
+    "valid": true
+  },
+  {
+    "raw": "\u00a0",
+    "normalized": "",
+    "valid": false
+  },
+  {
+    "raw": "\u1680Ace!*\u1680",
+    "normalized": "Ace!*",
+    "valid": true
+  },
+  {
+    "raw": "\u1680",
+    "normalized": "",
+    "valid": false
+  },
+  {
+    "raw": "\u2000\u2007\u2009Ace!*\u2000\u2007\u2009",
+    "normalized": "Ace!*",
+    "valid": true
+  },
+  {
+    "raw": "\u2000\u2007\u2009",
+    "normalized": "",
+    "valid": false
+  },
+  {
+    "raw": "\u2028\u2029Ace!*\u2028\u2029",
+    "normalized": "Ace!*",
+    "valid": true
+  },
+  {
+    "raw": "\u2028\u2029",
+    "normalized": "",
+    "valid": false
+  },
+  {
+    "raw": "\u202fAce!*\u202f",
+    "normalized": "Ace!*",
+    "valid": true
+  },
+  {
+    "raw": "\u202f",
+    "normalized": "",
+    "valid": false
+  },
+  {
+    "raw": "\u205fAce!*\u205f",
+    "normalized": "Ace!*",
+    "valid": true
+  },
+  {
+    "raw": "\u205f",
+    "normalized": "",
+    "valid": false
+  },
+  {
+    "raw": "\u3000Ace!*\u3000",
+    "normalized": "Ace!*",
+    "valid": true
+  },
+  {
+    "raw": "\u3000",
+    "normalized": "",
+    "valid": false
+  },
+  {
+    "raw": "\u180e\u200b\u2060\ufeffAce!*\u180e\u200b\u2060\ufeff",
+    "normalized": "Ace!*",
+    "valid": true
+  },
+  {
+    "raw": "\u180e\u200b\u2060\ufeff",
+    "normalized": "",
+    "valid": false
+  },
+  {
+    "raw": "",
+    "normalized": "",
+    "valid": false
+  },
+  {
+    "raw": "abcdefghijklmno",
+    "normalized": "abcdefghijklmno",
+    "valid": false
+  },
+  {
+    "raw": "Ace Pilot",
+    "normalized": "Ace Pilot",
+    "valid": false
+  },
+  {
+    "raw": "Ace\tPilot",
+    "normalized": "Ace\tPilot",
+    "valid": false
+  },
+  {
+    "raw": "Ace\u00a0Pilot",
+    "normalized": "Ace\u00a0Pilot",
+    "valid": false
+  },
+  {
+    "raw": "Ace\u200bPilot",
+    "normalized": "Ace\u200bPilot",
+    "valid": false
+  },
+  {
+    "raw": "Ace\ufeffPilot",
+    "normalized": "Ace\ufeffPilot",
+    "valid": false
+  },
+  {
+    "raw": "Ace\u0085Pilot",
+    "normalized": "Ace\u0085Pilot",
+    "valid": false
+  },
+  {
+    "raw": "x.y",
+    "normalized": "x.y",
+    "valid": false
+  },
+  {
+    "raw": "x$y",
+    "normalized": "x$y",
+    "valid": false
+  },
+  {
+    "raw": "x(y)",
+    "normalized": "x(y)",
+    "valid": false
+  },
+  {
+    "raw": "bad_name",
+    "normalized": "bad_name",
+    "valid": false
+  },
+  {
+    "raw": "bad-name",
+    "normalized": "bad-name",
+    "valid": false
+  },
+  {
+    "raw": "\u00e9",
+    "normalized": "\u00e9",
+    "valid": false
+  },
+  {
+    "raw": "\uff21ce",
+    "normalized": "\uff21ce",
+    "valid": false
+  },
+  {
+    "raw": "Ace\u202e",
+    "normalized": "Ace\u202e",
+    "valid": false
+  },
+  {
+    "raw": "\u0000Ace",
+    "normalized": "\u0000Ace",
+    "valid": false
+  },
+  {
+    "raw": "Ace\u007f",
+    "normalized": "Ace\u007f",
+    "valid": false
+  }
+]

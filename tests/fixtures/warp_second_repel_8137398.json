@@ -1,0 +1,136 @@
+{
+  "producer": "8137398439c5b3ac0946860a2ec8a03a5fe5972c",
+  "capture": "/tmp/zubspace-combat-e2e-1000532176669-3467831",
+  "startedAt": 1000532156665,
+  "budgetMs": 20000,
+  "origin": {
+    "playerX": 8333.15,
+    "playerY": 8200,
+    "playerVelocityX": 3.17,
+    "playerVelocityY": 0,
+    "playerOrientation": 0.25375
+  },
+  "plan": {
+    "target": {
+      "x": 7496,
+      "y": 8200
+    },
+    "destination": {
+      "x": 7437.51,
+      "y": 8200
+    },
+    "hullRadiusPx": 20,
+    "maxLegPx": 768,
+    "routes": [
+      {
+        "from": {
+          "x": 8333.1,
+          "y": 8200
+        },
+        "drivePoints": [
+          {
+            "x": 7576,
+            "y": 8200
+          },
+          {
+            "x": 7496,
+            "y": 8200
+          }
+        ],
+        "distancePx": 837.1000000000004
+      }
+    ]
+  },
+  "legs": [
+    {
+      "reached": true,
+      "distance": 0.5799999999999272,
+      "speed": 0,
+      "pulses": 303,
+      "target": {
+        "x": 7576,
+        "y": 8200
+      }
+    },
+    {
+      "reached": false,
+      "reason": "route timeout",
+      "attemptPathPx": 157.1,
+      "attemptNetDisplacementPx": 80.1,
+      "attemptMaxSpeed": 104.5,
+      "bestSettlingVelocityError": 47.345,
+      "attemptSamples": 103,
+      "attemptReversals": 4,
+      "attemptClosingSamples": 61,
+      "attemptOpeningSamples": 32,
+      "attemptHeadingErrorMaxTurns": 0.496,
+      "attemptHeadingErrorMeanTurns": 0.247,
+      "attemptActionSamples": {
+        "none": 1,
+        "thrust": 101,
+        "idle": 1
+      },
+      "attemptSelfCorrectionCount": 0,
+      "attemptServerPlayerAlive": true,
+      "attemptTrace": [
+        {
+          "ms": 3,
+          "distancePx": 79.4,
+          "radialPxPerS": 0,
+          "speed": 0,
+          "headingErrorTurns": 0.496,
+          "action": "none"
+        },
+        {
+          "ms": 1006,
+          "distancePx": 29.5,
+          "radialPxPerS": 104.5,
+          "speed": 104.5,
+          "headingErrorTurns": 0.496,
+          "action": "thrust"
+        },
+        {
+          "ms": 2024,
+          "distancePx": 29,
+          "radialPxPerS": -9.5,
+          "speed": 9.5,
+          "headingErrorTurns": 0.004,
+          "action": "thrust"
+        },
+        {
+          "ms": 3056,
+          "distancePx": 0.4,
+          "radialPxPerS": 0,
+          "speed": 38,
+          "headingErrorTurns": 0,
+          "action": "thrust"
+        },
+        {
+          "ms": 4060,
+          "distancePx": 0.4,
+          "radialPxPerS": 0,
+          "speed": 6.3,
+          "headingErrorTurns": 0,
+          "action": "thrust"
+        }
+      ],
+      "bestDistance": 0.10999999999967258,
+      "pulses": 102,
+      "target": {
+        "x": 7496,
+        "y": 8200
+      },
+      "inputBitsAtTimeout": 1,
+      "selfCorrectionCountAtTimeout": 0,
+      "lastSelfCorrectionReasonAtTimeout": 0,
+      "playerAliveAtTimeout": true,
+      "serverPlayerAliveAtTimeout": true,
+      "playerRespawnTimerAtTimeout": 0,
+      "playerEnergyAtTimeout": 1700,
+      "serverPlayerEnergyAtTimeout": 1700,
+      "chatActiveAtTimeout": false,
+      "traceSamplesTotal": 0
+    }
+  ],
+  "scope": "Captured genuine second-Repel approach; native replay checks the real test pilot against independent inertia and quantized controls, not production networking."
+}

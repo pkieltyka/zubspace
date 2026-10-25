@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Switch the zubspace test-browser workspace rule off again. Idempotent;
+# prints one of: disabled, already-disabled, not-registered.
+set -euo pipefail
+. "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
+
+hypr_check || exit 0
+
+result=$(hypr_lua '
+  local G = _G.__zubspace_e2e
+  if not G or not G.rules or #G.rules == 0 then return "not-registered" end
+  for _, rule in ipairs(G.rules) do rule:set_enabled(false) end
+  local was = G.enabled
+  G.enabled = false
+  return was and "disabled" or "already-disabled"
+')
+case "$result" in
+  not-registered)
+    log "no rule registered by these tools in this Hyprland session (a Hyprland reload also drops it)" ;;
+  *)
+    log "$result: new browser windows open normally again" ;;
+esac
+printf '%s\n' "$result"

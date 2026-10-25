@@ -1,0 +1,593 @@
+{
+  "producerHead": "8137398439c5b3ac0946860a2ec8a03a5fe5972c",
+  "source": "/tmp/zubspace-keyboard-chords-firefox-extreme-1000534690037-3978821-failure/browser-state.json",
+  "inputs": [
+    {
+      "at": 1000534701694,
+      "clientInputSeq": 16796,
+      "code": "ArrowRight",
+      "combatViewTimeline": {
+        "delayTicks": 7,
+        "gameAppliedServerTick": 846,
+        "gameAppliedSnapshotId": 182,
+        "generation": 1,
+        "holdOrStall": false,
+        "presentationRenderTick": 841,
+        "scheduledRenderTick": 841,
+        "serverTick": 848,
+        "targetDelayTicks": 7,
+        "weaponReady": true,
+        "weaponView": {
+          "currentFrames": 0,
+          "effectDrops": 0,
+          "historicalFrames": 0,
+          "missingHistoryFrames": 0,
+          "waitingFrames": 0
+        }
+      },
+      "inSafeZone": true,
+      "kind": "keydown",
+      "latestServerTick": 848,
+      "localRenderPrediction": {
+        "inputBits": 0,
+        "orientation": 0.85000014,
+        "partialSeconds": 0.00766675,
+        "shipPresentable": true,
+        "spawnPosePending": false,
+        "velocityX": 0.000202,
+        "velocityY": -176.000015,
+        "x": 8168,
+        "y": 7980.712402
+      },
+      "monotonicMs": 7354,
+      "playerLifeSeq": 1,
+      "playerOrientation": 0.85,
+      "playerVelocityX": 0,
+      "playerVelocityY": -176,
+      "playerX": 8168,
+      "playerY": 7982.06,
+      "renderOrdinal": 552,
+      "semanticInputCounts": {
+        "antiwarp": 0,
+        "bomb": 0,
+        "brick": 0,
+        "burst": 0,
+        "cloak": 0,
+        "decoy": 0,
+        "portal": 0,
+        "primary": 1,
+        "repel": 0,
+        "rocket": 0,
+        "thor": 0,
+        "warp": 0
+      },
+      "serial": 13,
+      "trackedCodes": [],
+      "weaponEligibility": {
+        "bombCooldown": -1.5233,
+        "burstCooldown": -2.9833,
+        "bursts": 2,
+        "decoys": 2,
+        "energy": 2800,
+        "inputBits": 0,
+        "repelCooldown": -2.9833,
+        "repels": 2,
+        "thors": 1
+      }
+    },
+    {
+      "at": 1000534701862,
+      "clientInputSeq": 16806,
+      "code": "ArrowRight",
+      "combatViewTimeline": {
+        "delayTicks": 7,
+        "gameAppliedServerTick": 863,
+        "gameAppliedSnapshotId": 192,
+        "generation": 1,
+        "holdOrStall": false,
+        "presentationRenderTick": 858,
+        "scheduledRenderTick": 858,
+        "serverTick": 865,
+        "targetDelayTicks": 7,
+        "weaponReady": true,
+        "weaponView": {
+          "currentFrames": 0,
+          "effectDrops": 0,
+          "historicalFrames": 0,
+          "missingHistoryFrames": 0,
+          "waitingFrames": 0
+        }
+      },
+      "inSafeZone": true,
+      "kind": "keyup",
+      "latestServerTick": 865,
+      "localRenderPrediction": {
+        "inputBits": 8,
+        "orientation": 0.00720012,
+        "partialSeconds": 0.00800013,
+        "shipPresentable": true,
+        "spawnPosePending": false,
+        "velocityX": 0.000202,
+        "velocityY": -176.000015,
+        "x": 8168,
+        "y": 7951.322266
+      },
+      "monotonicMs": 7521,
+      "playerLifeSeq": 1,
+      "playerOrientation": 0,
+      "playerVelocityX": 0,
+      "playerVelocityY": -176,
+      "playerX": 8168,
+      "playerY": 7952.73,
+      "renderOrdinal": 574,
+      "semanticInputCounts": {
+        "antiwarp": 0,
+        "bomb": 0,
+        "brick": 0,
+        "burst": 0,
+        "cloak": 0,
+        "decoy": 0,
+        "portal": 0,
+        "primary": 1,
+        "repel": 0,
+        "rocket": 0,
+        "thor": 0,
+        "warp": 0
+      },
+      "serial": 14,
+      "trackedCodes": [
+        "ArrowRight"
+      ],
+      "weaponEligibility": {
+        "bombCooldown": -1.69,
+        "burstCooldown": -3.15,
+        "bursts": 2,
+        "decoys": 2,
+        "energy": 2800,
+        "inputBits": 8,
+        "repelCooldown": -3.15,
+        "repels": 2,
+        "thors": 1
+      }
+    }
+  ],
+  "frames": [
+    {
+      "renderOrdinal": 552,
+      "monotonicMs": 7350,
+      "playerLifeSeq": 1,
+      "playerAlive": true,
+      "serverPlayerAlive": true,
+      "clientInputSeq": 16796,
+      "localRenderPrediction": {
+        "inputBits": 0,
+        "orientation": 0.85000014,
+        "partialSeconds": 0.00766675,
+        "shipPresentable": true,
+        "spawnPosePending": false,
+        "velocityX": 0.000202,
+        "velocityY": -176.000015,
+        "x": 8168,
+        "y": 7980.712402
+      }
+    },
+    {
+      "renderOrdinal": 553,
+      "monotonicMs": 7357,
+      "playerLifeSeq": 1,
+      "playerAlive": true,
+      "serverPlayerAlive": true,
+      "clientInputSeq": 16796,
+      "localRenderPrediction": {
+        "inputBits": 8,
+        "orientation": 0.86320019,
+        "partialSeconds": 0.01466672,
+        "shipPresentable": true,
+        "spawnPosePending": false,
+        "velocityX": 0.000202,
+        "velocityY": -176.000015,
+        "x": 8168,
+        "y": 7979.47998
+      }
+    },
+    {
+      "renderOrdinal": 554,
+      "monotonicMs": 7365,
+      "playerLifeSeq": 1,
+      "playerAlive": true,
+      "serverPlayerAlive": true,
+      "clientInputSeq": 16797,
+      "localRenderPrediction": {
+        "inputBits": 8,
+        "orientation": 0.87040007,
+        "partialSeconds": 0.00599995,
+        "shipPresentable": true,
+        "spawnPosePending": false,
+        "velocityX": 0.000202,
+        "velocityY": -176.000015,
+        "x": 8168,
+        "y": 7978.072266
+      }
+    },
+    {
+      "renderOrdinal": 555,
+      "monotonicMs": 7373,
+      "playerLifeSeq": 1,
+      "playerAlive": true,
+      "serverPlayerAlive": true,
+      "clientInputSeq": 16797,
+      "localRenderPrediction": {
+        "inputBits": 8,
+        "orientation": 0.87670028,
+        "partialSeconds": 0.01300016,
+        "shipPresentable": true,
+        "spawnPosePending": false,
+        "velocityX": 0.000202,
+        "velocityY": -176.000015,
+        "x": 8168,
+        "y": 7976.840332
+      }
+    },
+    {
+      "renderOrdinal": 556,
+      "monotonicMs": 7378,
+      "playerLifeSeq": 1,
+      "playerAlive": true,
+      "serverPlayerAlive": true,
+      "clientInputSeq": 16798,
+      "localRenderPrediction": {
+        "inputBits": 8,
+        "orientation": 0.88390017,
+        "partialSeconds": 0.00433339,
+        "shipPresentable": true,
+        "spawnPosePending": false,
+        "velocityX": 0.000202,
+        "velocityY": -176.000015,
+        "x": 8168,
+        "y": 7975.432617
+      }
+    },
+    {
+      "renderOrdinal": 557,
+      "monotonicMs": 7388,
+      "playerLifeSeq": 1,
+      "playerAlive": true,
+      "serverPlayerAlive": true,
+      "clientInputSeq": 16798,
+      "localRenderPrediction": {
+        "inputBits": 8,
+        "orientation": 0.88840026,
+        "partialSeconds": 0.0093335,
+        "shipPresentable": true,
+        "spawnPosePending": false,
+        "velocityX": 0.000202,
+        "velocityY": -176.000015,
+        "x": 8168,
+        "y": 7974.552734
+      }
+    },
+    {
+      "renderOrdinal": 558,
+      "monotonicMs": 7393,
+      "playerLifeSeq": 1,
+      "playerAlive": true,
+      "serverPlayerAlive": true,
+      "clientInputSeq": 16799,
+      "localRenderPrediction": {
+        "inputBits": 8,
+        "orientation": 0.89740026,
+        "partialSeconds": 0.00266683,
+        "shipPresentable": true,
+        "spawnPosePending": false,
+        "velocityX": 0.000202,
+        "velocityY": -176.000015,
+        "x": 8168,
+        "y": 7972.792969
+      }
+    },
+    {
+      "renderOrdinal": 559,
+      "monotonicMs": 7403,
+      "playerLifeSeq": 1,
+      "playerAlive": true,
+      "serverPlayerAlive": true,
+      "clientInputSeq": 16799,
+      "localRenderPrediction": {
+        "inputBits": 8,
+        "orientation": 0.90280008,
+        "partialSeconds": 0.00866663,
+        "shipPresentable": true,
+        "spawnPosePending": false,
+        "velocityX": 0.000202,
+        "velocityY": -176.000015,
+        "x": 8168,
+        "y": 7971.736816
+      }
+    },
+    {
+      "renderOrdinal": 560,
+      "monotonicMs": 7410,
+      "playerLifeSeq": 1,
+      "playerAlive": true,
+      "serverPlayerAlive": true,
+      "clientInputSeq": 16800,
+      "localRenderPrediction": {
+        "inputBits": 8,
+        "orientation": 0.91090012,
+        "partialSeconds": 0.00100003,
+        "shipPresentable": true,
+        "spawnPosePending": false,
+        "velocityX": 0.000202,
+        "velocityY": -176.000015,
+        "x": 8168,
+        "y": 7970.15332
+      }
+    },
+    {
+      "renderOrdinal": 561,
+      "monotonicMs": 7416,
+      "playerLifeSeq": 1,
+      "playerAlive": true,
+      "serverPlayerAlive": true,
+      "clientInputSeq": 16800,
+      "localRenderPrediction": {
+        "inputBits": 8,
+        "orientation": 0.91720009,
+        "partialSeconds": 0.008,
+        "shipPresentable": true,
+        "spawnPosePending": false,
+        "velocityX": 0.000202,
+        "velocityY": -176.000015,
+        "x": 8168,
+        "y": 7968.920898
+      }
+    },
+    {
+      "renderOrdinal": 562,
+      "monotonicMs": 7425,
+      "playerLifeSeq": 1,
+      "playerAlive": true,
+      "serverPlayerAlive": true,
+      "clientInputSeq": 16800,
+      "localRenderPrediction": {
+        "inputBits": 8,
+        "orientation": 0.92350006,
+        "partialSeconds": 0.01499997,
+        "shipPresentable": true,
+        "spawnPosePending": false,
+        "velocityX": 0.000202,
+        "velocityY": -176.000015,
+        "x": 8168,
+        "y": 7967.688965
+      }
+    },
+    {
+      "renderOrdinal": 563,
+      "monotonicMs": 7433,
+      "playerLifeSeq": 1,
+      "playerAlive": true,
+      "serverPlayerAlive": true,
+      "clientInputSeq": 16801,
+      "localRenderPrediction": {
+        "inputBits": 8,
+        "orientation": 0.93160009,
+        "partialSeconds": 0.00733336,
+        "shipPresentable": true,
+        "spawnPosePending": false,
+        "velocityX": 0.000202,
+        "velocityY": -176.000015,
+        "x": 8168,
+        "y": 7966.105469
+      }
+    },
+    {
+      "renderOrdinal": 564,
+      "monotonicMs": 7441,
+      "playerLifeSeq": 1,
+      "playerAlive": true,
+      "serverPlayerAlive": true,
+      "clientInputSeq": 16801,
+      "localRenderPrediction": {
+        "inputBits": 8,
+        "orientation": 0.93880022,
+        "partialSeconds": 0.0153335,
+        "shipPresentable": true,
+        "spawnPosePending": false,
+        "velocityX": 0.000202,
+        "velocityY": -176.000015,
+        "x": 8168,
+        "y": 7964.697266
+      }
+    },
+    {
+      "renderOrdinal": 565,
+      "monotonicMs": 7448,
+      "playerLifeSeq": 1,
+      "playerAlive": true,
+      "serverPlayerAlive": true,
+      "clientInputSeq": 16802,
+      "localRenderPrediction": {
+        "inputBits": 8,
+        "orientation": 0.94510019,
+        "partialSeconds": 0.0056668,
+        "shipPresentable": true,
+        "spawnPosePending": false,
+        "velocityX": 0.000202,
+        "velocityY": -176.000015,
+        "x": 8168,
+        "y": 7963.465332
+      }
+    },
+    {
+      "renderOrdinal": 566,
+      "monotonicMs": 7456,
+      "playerLifeSeq": 1,
+      "playerAlive": true,
+      "serverPlayerAlive": true,
+      "clientInputSeq": 16802,
+      "localRenderPrediction": {
+        "inputBits": 8,
+        "orientation": 0.95140016,
+        "partialSeconds": 0.01266677,
+        "shipPresentable": true,
+        "spawnPosePending": false,
+        "velocityX": 0.000202,
+        "velocityY": -176.000015,
+        "x": 8168,
+        "y": 7962.233398
+      }
+    },
+    {
+      "renderOrdinal": 567,
+      "monotonicMs": 7468,
+      "playerLifeSeq": 1,
+      "playerAlive": true,
+      "serverPlayerAlive": true,
+      "clientInputSeq": 16803,
+      "localRenderPrediction": {
+        "inputBits": 8,
+        "orientation": 0.95770013,
+        "partialSeconds": 0.00300007,
+        "shipPresentable": true,
+        "spawnPosePending": false,
+        "velocityX": 0.000202,
+        "velocityY": -176.000015,
+        "x": 8168,
+        "y": 7961.001953
+      }
+    },
+    {
+      "renderOrdinal": 568,
+      "monotonicMs": 7468,
+      "playerLifeSeq": 1,
+      "playerAlive": true,
+      "serverPlayerAlive": true,
+      "clientInputSeq": 16803,
+      "localRenderPrediction": {
+        "inputBits": 8,
+        "orientation": 0.96940011,
+        "partialSeconds": 0.01600008,
+        "shipPresentable": true,
+        "spawnPosePending": false,
+        "velocityX": 0.000202,
+        "velocityY": -176.000015,
+        "x": 8168,
+        "y": 7958.713867
+      }
+    },
+    {
+      "renderOrdinal": 569,
+      "monotonicMs": 7481,
+      "playerLifeSeq": 1,
+      "playerAlive": true,
+      "serverPlayerAlive": true,
+      "clientInputSeq": 16804,
+      "localRenderPrediction": {
+        "inputBits": 8,
+        "orientation": 0.97030002,
+        "partialSeconds": 0.00033334,
+        "shipPresentable": true,
+        "spawnPosePending": false,
+        "velocityX": 0.000202,
+        "velocityY": -176.000015,
+        "x": 8168,
+        "y": 7958.538086
+      }
+    },
+    {
+      "renderOrdinal": 570,
+      "monotonicMs": 7487,
+      "playerLifeSeq": 1,
+      "playerAlive": true,
+      "serverPlayerAlive": true,
+      "clientInputSeq": 16804,
+      "localRenderPrediction": {
+        "inputBits": 8,
+        "orientation": 0.98110008,
+        "partialSeconds": 0.01233342,
+        "shipPresentable": true,
+        "spawnPosePending": false,
+        "velocityX": 0.000202,
+        "velocityY": -176.000015,
+        "x": 8168,
+        "y": 7956.425781
+      }
+    },
+    {
+      "renderOrdinal": 571,
+      "monotonicMs": 7496,
+      "playerLifeSeq": 1,
+      "playerAlive": true,
+      "serverPlayerAlive": true,
+      "clientInputSeq": 16805,
+      "localRenderPrediction": {
+        "inputBits": 8,
+        "orientation": 0.98740005,
+        "partialSeconds": 0.00266673,
+        "shipPresentable": true,
+        "spawnPosePending": false,
+        "velocityX": 0.000202,
+        "velocityY": -176.000015,
+        "x": 8168,
+        "y": 7955.194336
+      }
+    },
+    {
+      "renderOrdinal": 572,
+      "monotonicMs": 7500,
+      "playerLifeSeq": 1,
+      "playerAlive": true,
+      "serverPlayerAlive": true,
+      "clientInputSeq": 16805,
+      "localRenderPrediction": {
+        "inputBits": 8,
+        "orientation": 0.99370003,
+        "partialSeconds": 0.0096667,
+        "shipPresentable": true,
+        "spawnPosePending": false,
+        "velocityX": 0.000202,
+        "velocityY": -176.000015,
+        "x": 8168,
+        "y": 7953.962402
+      }
+    },
+    {
+      "renderOrdinal": 573,
+      "monotonicMs": 7510,
+      "playerLifeSeq": 1,
+      "playerAlive": true,
+      "serverPlayerAlive": true,
+      "clientInputSeq": 16805,
+      "localRenderPrediction": {
+        "inputBits": 8,
+        "orientation": 0.99910009,
+        "partialSeconds": 0.01566674,
+        "shipPresentable": true,
+        "spawnPosePending": false,
+        "velocityX": 0.000202,
+        "velocityY": -176.000015,
+        "x": 8168,
+        "y": 7952.90625
+      }
+    },
+    {
+      "renderOrdinal": 574,
+      "monotonicMs": 7518,
+      "playerLifeSeq": 1,
+      "playerAlive": true,
+      "serverPlayerAlive": true,
+      "clientInputSeq": 16806,
+      "localRenderPrediction": {
+        "inputBits": 8,
+        "orientation": 0.00720012,
+        "partialSeconds": 0.00800013,
+        "shipPresentable": true,
+        "spawnPosePending": false,
+        "velocityX": 0.000202,
+        "velocityY": -176.000015,
+        "x": 8168,
+        "y": 7951.322266
+      }
+    }
+  ]
+}

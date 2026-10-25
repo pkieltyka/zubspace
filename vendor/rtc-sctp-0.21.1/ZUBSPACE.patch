@@ -1,0 +1,435 @@
+--- a/src/association/association_test.rs
++++ b/src/association/association_test.rs
+@@ -596,7 +596,7 @@
+     let a = create_association_with_mtu(1191);
+     let chunks = vec![payload_chunk(1, 1147), payload_chunk(2, 16)];
+     let mut raw_packets = vec![];
+-    a.bundle_data_chunks_into_packets(chunks, &mut raw_packets);
++    a.bundle_data_chunks_into_packets(chunks, None, &mut raw_packets);
+     assert_eq!(
+         raw_packets.len(),
+         2,
+@@ -612,13 +612,78 @@
+     }
+ }
+ 
++use crate::chunk::chunk_type::{CT_PAYLOAD_DATA, CT_SACK};
++
++/// Chunk type bytes of one marshalled packet, in order (Zubspace).
++fn chunk_types(packet: &[u8]) -> Vec<u8> {
++    let mut types = vec![];
++    let mut offset = COMMON_HEADER_SIZE as usize;
++    while offset + 4 <= packet.len() {
++        types.push(packet[offset]);
++        let len = u16::from_be_bytes([packet[offset + 2], packet[offset + 3]]) as usize;
++        offset += len.next_multiple_of(4);
++    }
++    types
++}
++
++#[test]
++fn a_pending_sack_rides_ahead_of_new_data_in_one_packet() {
++    // Zubspace: a SACK still waiting on the delayed-ack timer, or due now,
++    // shares the first DATA packet instead of taking its own datagram.
++    for state in [AckState::Delay, AckState::Immediate] {
++        let mut a = create_association_with_mtu(1191);
++        a.ack_state = state;
++        let chunks = vec![payload_chunk(1, 600), payload_chunk(2, 200)];
++        let mut raw_packets = vec![];
++        let sack = a.take_pending_sack_for(&chunks[0], &mut raw_packets);
++        assert!(sack.is_some());
++        assert_eq!(a.ack_state, AckState::Idle, "the bundled SACK is the ack");
++        assert!(raw_packets.is_empty(), "no standalone SACK datagram");
++        a.bundle_data_chunks_into_packets(chunks, sack.as_ref(), &mut raw_packets);
++        assert_eq!(raw_packets.len(), 1);
++        assert!(raw_packets[0].len() as u32 <= a.mtu);
++        assert_eq!(
++            chunk_types(&raw_packets[0]),
++            vec![CT_SACK.0, CT_PAYLOAD_DATA.0, CT_PAYLOAD_DATA.0]
++        );
++        Packet::unmarshal(&raw_packets[0]).expect("bundled packet parses");
++    }
++    // Nothing pending: nothing taken.
++    let mut a = create_association_with_mtu(1191);
++    let mut raw_packets = vec![];
++    assert!(a
++        .take_pending_sack_for(&payload_chunk(1, 10), &mut raw_packets)
++        .is_none());
++    assert!(raw_packets.is_empty());
++}
++
++#[test]
++fn a_sack_that_does_not_fit_beside_the_first_data_chunk_goes_alone_first() {
++    let mut a = create_association_with_mtu(1191);
++    a.ack_state = AckState::Delay;
++    // The largest padded DATA chunk that still fits one packet on its own.
++    let full = (a.mtu as usize - COMMON_HEADER_SIZE as usize - DATA_CHUNK_HEADER_SIZE as usize)
++        / 4
++        * 4;
++    let chunks = vec![payload_chunk(1, full), payload_chunk(2, 20)];
++    let mut raw_packets = vec![];
++    let sack = a.take_pending_sack_for(&chunks[0], &mut raw_packets);
++    assert!(sack.is_none());
++    assert_eq!(a.ack_state, AckState::Idle);
++    a.bundle_data_chunks_into_packets(chunks, sack.as_ref(), &mut raw_packets);
++    assert_eq!(chunk_types(&raw_packets[0]), vec![CT_SACK.0]);
++    assert!(raw_packets[1..]
++        .iter()
++        .all(|p| p.len() as u32 <= a.mtu && chunk_types(p).iter().all(|t| *t == CT_PAYLOAD_DATA.0)));
++}
++
+ #[test]
+ fn single_maximum_size_chunk_marshals_within_initial_mtu() {
+     let max_payload = EndpointConfig::default().get_max_payload_size();
+     let a = create_association_with_mtu(max_payload + COMMON_HEADER_SIZE + DATA_CHUNK_HEADER_SIZE);
+     let chunks = vec![payload_chunk(1, max_payload as usize)];
+     let mut raw_packets = vec![];
+-    a.bundle_data_chunks_into_packets(chunks, &mut raw_packets);
++    a.bundle_data_chunks_into_packets(chunks, None, &mut raw_packets);
+     assert_eq!(raw_packets.len(), 1);
+     assert!(
+         raw_packets[0].len() as u32 <= INITIAL_MTU,
+@@ -643,7 +708,7 @@
+             create_association_with_mtu(max_payload + COMMON_HEADER_SIZE + DATA_CHUNK_HEADER_SIZE);
+         let chunks = vec![payload_chunk(1, max_payload as usize)];
+         let mut raw_packets = vec![];
+-        a.bundle_data_chunks_into_packets(chunks, &mut raw_packets);
++        a.bundle_data_chunks_into_packets(chunks, None, &mut raw_packets);
+         assert_eq!(raw_packets.len(), 1);
+         assert_eq!(
+             raw_packets[0].len(),
+@@ -691,7 +756,7 @@
+     let a = create_association_with_mtu(1191);
+     let chunks: Vec<ChunkPayloadData> = (0..60).map(|i| payload_chunk(i, 17)).collect();
+     let mut raw_packets = vec![];
+-    a.bundle_data_chunks_into_packets(chunks, &mut raw_packets);
++    a.bundle_data_chunks_into_packets(chunks, None, &mut raw_packets);
+     assert!(raw_packets.len() >= 2);
+     let total: usize = raw_packets.iter().map(|p| p.len()).sum();
+     for p in &raw_packets {
+--- a/src/association/mod.rs
++++ b/src/association/mod.rs
+@@ -44,7 +44,21 @@
+ use shared::error::{Error, Result};
+ use shared::{TransportContext, TransportMessage, TransportProtocol};
+ use stream::{Stream, StreamEvent, StreamId, StreamState};
+-use timer::{ACK_INTERVAL, RtoManager, Timer, TimerTable};
++use timer::{ACK_INTERVAL, DEFERRED_ACK_INTERVAL, RtoManager, Timer, TimerTable};
++
++/// Zubspace: whether new associations use `AckMode::DeferToData`.
++static DEFER_SACK_TO_DATA: std::sync::atomic::AtomicBool =
++    std::sync::atomic::AtomicBool::new(false);
++
++/// Zubspace: make associations created from now on hold a SACK that a second
++/// packet made due for up to 20 ms, so outgoing DATA carries it instead of a
++/// datagram of its own. RFC 9260 6.2 asks for a SACK at least every second
++/// packet as a SHOULD. Meant for a peer that sends DATA every few
++/// milliseconds; losses, duplicates and the I-bit still SACK at once. Off by
++/// default.
++pub fn set_defer_sack_to_data(enabled: bool) {
++    DEFER_SACK_TO_DATA.store(enabled, std::sync::atomic::Ordering::Relaxed);
++}
+ 
+ use crate::association::stream::RecvSendState;
+ use bytes::{Bytes, BytesMut};
+@@ -249,6 +263,9 @@
+     // per inbound packet context
+     delayed_ack_triggered: bool,
+     immediate_ack_triggered: bool,
++    /// Zubspace: a second packet made the SACK due, but it may wait briefly
++    /// for outgoing DATA to carry it (`DEFERRED_ACK_INTERVAL`).
++    deferred_ack_triggered: bool,
+ 
+     pub(crate) stats: AssociationStats,
+     ack_state: AckState,
+@@ -342,12 +359,17 @@
+             // per inbound packet context
+             delayed_ack_triggered: false,
+             immediate_ack_triggered: false,
++            deferred_ack_triggered: false,
+ 
+             stats: AssociationStats::default(),
+             ack_state: AckState::default(),
+ 
+             // for testing
+-            ack_mode: AckMode::default(),
++            ack_mode: if DEFER_SACK_TO_DATA.load(std::sync::atomic::Ordering::Relaxed) {
++                AckMode::DeferToData
++            } else {
++                AckMode::default()
++            },
+         }
+     }
+ }
+@@ -961,6 +983,7 @@
+     fn handle_chunk_start(&mut self) {
+         self.delayed_ack_triggered = false;
+         self.immediate_ack_triggered = false;
++        self.deferred_ack_triggered = false;
+     }
+ 
+     fn handle_chunk_end(&mut self, now: Instant) {
+@@ -968,6 +991,13 @@
+             self.ack_state = AckState::Immediate;
+             self.timers.stop(Timer::Ack);
+             self.awake_write_loop();
++        } else if self.deferred_ack_triggered {
++            // Zubspace: due, but outgoing DATA within one server tick carries
++            // it (`take_pending_sack_for`); the shortened timer sends it alone
++            // otherwise.
++            self.ack_state = AckState::Delay;
++            self.timers
++                .start_or_shorten(Timer::Ack, now, DEFERRED_ACK_INTERVAL);
+         } else if self.delayed_ack_triggered {
+             // Will send delayed ack in the next ack timeout
+             self.ack_state = AckState::Delay;
+@@ -1685,11 +1715,16 @@
+         if (self.ack_state != AckState::Immediate
+             && !sack_immediately
+             && !has_packet_loss
+-            && self.ack_mode == AckMode::Normal)
++            && matches!(self.ack_mode, AckMode::Normal | AckMode::DeferToData))
+             || self.ack_mode == AckMode::AlwaysDelay
+         {
+             if self.ack_state == AckState::Idle {
+                 self.delayed_ack_triggered = true;
++            } else if self.ack_mode == AckMode::DeferToData {
++                // Zubspace: RFC 9260 6.2 asks for a SACK at least every second
++                // packet (SHOULD); defer it up to one Zubspace server tick so
++                // it rides with DATA instead of taking its own datagram.
++                self.deferred_ack_triggered = true;
+             } else {
+                 self.immediate_ack_triggered = true;
+             }
+@@ -2328,7 +2363,8 @@
+             self.timers
+                 .start_if_idle(Timer::T3RTX, now, self.rto_mgr.get_rto());
+ 
+-            self.bundle_data_chunks_into_packets(chunks, &mut raw_packets);
++            let sack = self.take_pending_sack_for(&chunks[0], &mut raw_packets);
++            self.bundle_data_chunks_into_packets(chunks, sack.as_ref(), &mut raw_packets);
+         }
+ 
+         if !sis_to_reset.is_empty() || self.will_retransmit_reconfig {
+@@ -2485,12 +2521,44 @@
+                     );
+                 }
+             }
+-            self.bundle_data_chunks_into_packets(to_fast_retrans, &mut raw_packets);
++            self.bundle_data_chunks_into_packets(to_fast_retrans, None, &mut raw_packets);
+         }
+ 
+         raw_packets
+     }
+ 
++    /// Zubspace: a pending SACK, whether due now or still waiting on the
++    /// delayed-ack timer, rides ahead of the first new DATA chunk instead of
++    /// taking its own datagram (RFC 4960 sec 6: control chunks may be bundled
++    /// with DATA when placed first, and a SACK may be sent before its delay
++    /// expires). Returns it for bundling, or sends it alone first when it and
++    /// `first` would not fit one packet.
++    fn take_pending_sack_for(
++        &mut self,
++        first: &ChunkPayloadData,
++        raw_packets: &mut Vec<Bytes>,
++    ) -> Option<ChunkSelectiveAck> {
++        if self.ack_state == AckState::Idle {
++            return None;
++        }
++        self.ack_state = AckState::Idle;
++        self.timers.stop(Timer::Ack);
++        let sack = self.create_selective_ack_chunk();
++        let packet = COMMON_HEADER_SIZE as usize
++            + (CHUNK_HEADER_SIZE + sack.value_length()).next_multiple_of(4)
++            + (DATA_CHUNK_HEADER_SIZE as usize + first.user_data.len()).next_multiple_of(4);
++        if packet <= self.mtu as usize {
++            debug!("[{}] bundling SACK with DATA: {}", self.side, sack);
++            return Some(sack);
++        }
++        debug!("[{}] sending SACK: {}", self.side, sack);
++        match self.marshal_control_chunk(&sack) {
++            Ok(raw) => raw_packets.push(raw),
++            Err(_) => warn!("[{}] failed to serialize a SACK packet", self.side),
++        }
++        None
++    }
++
+     fn gather_outbound_sack_packets(&mut self, mut raw_packets: Vec<Bytes>) -> Vec<Bytes> {
+         if self.ack_state == AckState::Immediate {
+             self.ack_state = AckState::Idle;
+@@ -2662,7 +2730,7 @@
+                 );
+             }
+         }
+-        self.bundle_data_chunks_into_packets(chunks, raw_packets);
++        self.bundle_data_chunks_into_packets(chunks, None, raw_packets);
+         Ok(())
+     }
+ 
+@@ -3014,9 +3082,13 @@
+     /// bundle_data_chunks_into_packets packs DATA chunks into packets. It tries to bundle
+     /// DATA chunks into a packet so long as the resulting packet size does not exceed
+     /// the path MTU.
++    ///
++    /// Zubspace: `leading`, a SACK that the caller checked fits beside the
++    /// first chunk, is written ahead of the DATA in the first packet.
+     fn bundle_data_chunks_into_packets(
+         &self,
+         chunks: Vec<ChunkPayloadData>,
++        leading: Option<&ChunkSelectiveAck>,
+         raw_packets: &mut Vec<Bytes>,
+     ) {
+         // RFC 4960 sec 6.1.  Transmission of DATA Chunks
+@@ -3046,10 +3118,13 @@
+         // boundaries are computed once here and reused below, so the MTU-split
+         // rule lives in exactly one place.
+         let hdr = COMMON_HEADER_SIZE as usize;
++        let leading_len = leading.map_or(0, |sack| {
++            (CHUNK_HEADER_SIZE + sack.value_length()).next_multiple_of(4)
++        });
+         let mut bundles: Vec<(usize, usize)> = Vec::new();
+         let mut total_len = 0usize;
+         let mut bundle_start = 0;
+-        let mut bundle_len = hdr;
++        let mut bundle_len = hdr + leading_len;
+         for (i, chunk) in chunks.iter().enumerate() {
+             // Marshalled chunk size: header + payload, padded up to the SCTP
+             // 4-byte boundary. Bundle decisions must use this wire size —
+@@ -3074,9 +3149,12 @@
+         // Second pass: marshal each datagram into the shared buffer.
+         let mut buf = BytesMut::with_capacity(total_len);
+         for (start, end) in bundles {
++            let leading = leading.filter(|_| start == 0).map(|sack| sack as &dyn Chunk);
+             match Packet::write_framed(
+                 &common_header,
+-                chunks[start..end].iter().map(|c| c as &dyn Chunk),
++                leading
++                    .into_iter()
++                    .chain(chunks[start..end].iter().map(|c| c as &dyn Chunk)),
+                 &mut buf,
+             ) {
+                 Ok(_) => {
+--- a/src/association/state.rs
++++ b/src/association/state.rs
+@@ -64,6 +64,9 @@
+     Normal,
+     NoDelay,
+     AlwaysDelay,
++    /// Zubspace: as `Normal`, but a SACK made due by a second packet waits up
++    /// to `DEFERRED_ACK_INTERVAL` for outgoing DATA to carry it.
++    DeferToData,
+ }
+ 
+ impl fmt::Display for AckMode {
+@@ -72,6 +75,7 @@
+             AckMode::Normal => "Normal",
+             AckMode::NoDelay => "NoDelay",
+             AckMode::AlwaysDelay => "AlwaysDelay",
++            AckMode::DeferToData => "DeferToData",
+         };
+         write!(f, "{}", s)
+     }
+--- a/src/association/timer.rs
++++ b/src/association/timer.rs
+@@ -1,6 +1,9 @@
+ use std::time::{Duration, Instant};
+ 
+ pub(crate) const ACK_INTERVAL: u64 = 200;
++/// Zubspace: once a second packet makes a SACK due, it waits at most this long
++/// for outgoing DATA to carry it. A Zubspace server sends DATA every 16.7 ms.
++pub(crate) const DEFERRED_ACK_INTERVAL: u64 = 20;
+ const MAX_INIT_RETRANS: usize = 8;
+ const PATH_MAX_RETRANS: usize = 5;
+ const NO_MAX_RETRANS: usize = usize::MAX;
+@@ -126,6 +129,14 @@
+         self.data[timer as usize] = Some(time);
+     }
+ 
++    /// Zubspace: arm `timer` to fire no later than `interval` from now, keeping
++    /// an earlier deadline. Repeated calls can only bring it closer.
++    pub fn start_or_shorten(&mut self, timer: Timer, now: Instant, interval: u64) {
++        let time = now + Duration::from_millis(interval);
++        let slot = &mut self.data[timer as usize];
++        *slot = Some(slot.map_or(time, |current| current.min(time)));
++    }
++
+     /// Start an idle timer without hiding an unhandled expiration. A due
+     /// deadline stays armed until timeout processing consumes it, unless an
+     /// explicit protocol restart first clears it (for T3, acknowledgment of
+--- a/src/endpoint/endpoint_test.rs
++++ b/src/endpoint/endpoint_test.rs
+@@ -2942,6 +2942,63 @@
+ 
+ // This test reproduces an issue related to having regular messages (regular acks) which keep
+ // rescheduling the T3RTX timer before it can ever fire.
++/// Zubspace: with `AckMode::DeferToData` a SACK made due by a second packet
++/// rides with the server's next DATA, or goes alone after at most 20 ms.
++#[test]
++fn test_deferred_sack_rides_with_the_next_data_or_its_short_timer() -> Result<()> {
++    let si: u16 = 6;
++    let msg = Bytes::from_static(b"input");
++    for server_writes in [true, false] {
++        let (mut pair, client_ch, server_ch) = create_association_pair(AckMode::DeferToData, 0)?;
++        establish_session_pair(&mut pair, client_ch, server_ch, si)?;
++        pair.drive();
++        pair.client_conn_mut(client_ch).stats.reset();
++        pair.server_conn_mut(server_ch).stats.reset();
++
++        // Two client packets, one after the other.
++        for _ in 0..2 {
++            let now = pair.time;
++            pair.client_stream(client_ch, si)?.write_sctp(
++                now,
++                &msg,
++                PayloadProtocolIdentifier::Binary,
++            )?;
++            pair.drive_client();
++        }
++        // The server takes both; the second makes a SACK due, which waits.
++        pair.drive_server();
++        pair.drive_client();
++        assert_eq!(
++            pair.client_conn_mut(client_ch).stats.get_num_sacks(),
++            0,
++            "no standalone SACK yet"
++        );
++
++        let started = pair.time;
++        if server_writes {
++            let now = pair.time;
++            pair.server_stream(server_ch, si)?.write_sctp(
++                now,
++                &msg,
++                PayloadProtocolIdentifier::Binary,
++            )?;
++            pair.drive_server();
++            pair.drive_client();
++            assert_eq!(pair.time, started, "carried at once by the DATA");
++        } else {
++            pair.drive();
++            assert!(pair.time.duration_since(started) <= Duration::from_millis(20));
++        }
++        assert_eq!(pair.client_conn_mut(client_ch).stats.get_num_sacks(), 1);
++        assert_eq!(
++            pair.server_conn_mut(server_ch).stats.get_num_ack_timeouts(),
++            u64::from(!server_writes)
++        );
++        close_association_pair(&mut pair, client_ch, server_ch, si);
++    }
++    Ok(())
++}
++
+ #[test]
+ fn test_old_rtx_on_regular_acks() -> Result<()> {
+     let si: u16 = 6;
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -57,7 +57,7 @@
+ 
+ mod association;
+ pub use crate::association::{
+-    Association, AssociationError, Event,
++    Association, AssociationError, Event, set_defer_sack_to_data,
+     stats::AssociationStats,
+     stream::{ReliabilityType, Stream, StreamEvent, StreamId, StreamState},
+     timer::TimerConfig,

@@ -1,0 +1,77 @@
+[server]
+# Production game server for https://zubspace.gg. scripts/deploy.sh mounts this
+# file at /etc/zubspace/zubspace_server.toml; deploy/compose.yml sets no
+# ZUBSPACE_SERVER_* variables, so every value here is the effective one.
+# Key meanings: config/zubspace_server.toml.
+
+# Private HTTP listener. The client container's nginx proxies the public /v1
+# API to it. Keep the port equal to ZUBSPACE_SERVER_HTTP_PORT in compose.env.
+bind = "127.0.0.1:9001"
+zone = "chaos-zone"
+zone_bundle_root = "assets/zones"
+allow_zone_overrides = true
+max_players = 500
+tick_rate = 60
+
+maxed_spawn_loadout = true
+# Warbird, Leviathan, Terrier and Lancaster, spread evenly across the 15 bots.
+bot_count = 15
+bot_ship_types = "1,4,5,7"
+
+log_level = "info"
+# Prod keeps lifecycle lines (startup, joins, leaves, disconnects), the
+# 10-second connection quality windows and every WARN/ERROR. It drops the
+# per-shot, per-hit, per-damage and per-acknowledgement lines
+# (src/bin/zubspace_server/log_targets.rs); dev logs those at DEBUG.
+log_filter = "zubspace_server::server_tick::combat=warn,zubspace_server::server_damage::combat=warn,zubspace_server::arena::positions::combat=warn,zubspace_server::arena::positions::weapons::combat=warn,zubspace_server::reliable::acks=warn,zubspace_server::rtc::acks=warn"
+log_format = "json"
+# stdout, which the journald log driver stores under the host's journal cap.
+log_file = ""
+# Scraped by this environment's Prometheus (deploy/prod/prometheus.yml).
+metrics_listen = "127.0.0.1:9100"
+
+quality_max_rtt_ms = 600
+quality_max_loss_per_mille = 150
+quality_recovery_rtt_ms = 400
+quality_recovery_loss_per_mille = 100
+
+enable_objectives = false
+sim_observe = false
+observer_network_profile = "clean-lan"
+qa_trace_upload = false
+# No client presentation traces in prod. Browsers still send the 62-byte
+# five-second experience reports that feed zubspace_browser_* metrics.
+client_debug_trace = false
+movement_snapback = true
+tx_loss_pct = 0
+
+# WebRTC: one UDP socket per peer from a fixed range at least max_players wide,
+# bound to the host's public IPv4 (it must be assigned to an interface here).
+rtc_udp_bind_ip = "85.155.184.54"
+rtc_udp_path_mtu = 0
+# Requires the matching firewall allowance in deploy/host/setup.sh before rollout.
+# This 500-port range does not overlap dev's 9902-10401.
+rtc_udp_port_range = "9402-9901"
+rtc_external_ips = ""
+rtc_ice_urls = ""
+rtc_ice_username = ""
+rtc_ice_credential = ""
+rtc_ice_policy = "all"
+# Network efficiency settings, the same as dev (docs/networking.md):
+# - realtime event copies on the lossy game channel only for players whose
+#   connection-quality probes show loss;
+# - a 96 KiB/s per-player snapshot/event budget, above the 54-60 KB/s a
+#   48-ship crowd needs;
+# - a short write wait (about 1 ms) so a tick's messages share UDP datagrams.
+realtime_event_game_copy = "on-loss"
+send_budget_kib_per_second = 96
+rtc_write_coalesce_micros = 500
+
+# Browsers reach signaling only through Cloudflare, the tunnel and nginx, which
+# set X-Forwarded-Proto and the real client address.
+signaling_allowed_origins = "https://zubspace.gg"
+signaling_auth_token = ""
+signaling_require_https = true
+signaling_trust_proxy_headers = true
+signaling_offer_rate_per_minute = 600
+signaling_max_offer_bytes = 131072

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Return the user's view to the workspace that was active before `show`.
+set -euo pipefail
+. "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
+
+hypr_check || exit 0
+hypr_lua 'hl.dispatch(hl.dsp.focus({ workspace = "previous" })) return "focused previous workspace"'

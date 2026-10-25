@@ -1,0 +1,3 @@
+# Use Rust 2024 parsing and formatting rules throughout the crate.
+edition = "2024"
+style_edition = "2024"

@@ -1,0 +1,66 @@
+{
+  "accepted_descriptors": [
+    {
+      "id": "punct-zone",
+      "display_name": "Zone! 42?",
+      "map": "test.lvl"
+    },
+    {
+      "id": "bounded-zone",
+      "display_name": "A!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!",
+      "map": "test.lvl"
+    },
+    {
+      "id": "escaped-zone",
+      "display_name": "Zone! 42? \"Q\" \\",
+      "map": "test.lvl"
+    }
+  ],
+  "rejected_display_names": [
+    "!!!",
+    "---___...",
+    "   ",
+    "",
+    "\t",
+    "Zøne",
+    "A!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+  ],
+  "collision_catalogs": [
+    [
+      {
+        "id": "public-one",
+        "display_name": "Public Room",
+        "map": "test.lvl"
+      },
+      {
+        "id": "public-two",
+        "display_name": "Public-Room",
+        "map": "test.lvl"
+      }
+    ],
+    [
+      {
+        "id": "signal-room",
+        "display_name": "Signal Hub",
+        "map": "test.lvl"
+      },
+      {
+        "id": "other-room",
+        "display_name": "Signal Room",
+        "map": "test.lvl"
+      }
+    ],
+    [
+      {
+        "id": "a-b",
+        "display_name": "First Room",
+        "map": "test.lvl"
+      },
+      {
+        "id": "ab",
+        "display_name": "Second Room",
+        "map": "test.lvl"
+      }
+    ]
+  ]
+}

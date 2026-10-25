@@ -1,0 +1,186 @@
+# Help: keyboard (F1 for more)
+%Y %KEsc %WMenu display
+%pMovement
+%Y %KB_LEFT %WTurn left
+%Y %KB_RIGHT %WTurn right
+%Y %KB_FORWARD %WForward thrust
+%Y %KB_REVERSE %WReverse thrust
+%Y %KB_AFTERBURNERS %WAfterburners
+%pWeapons
+%Y %KB_BULLET %WFire guns
+%Y %KB_BOMB %WFire bomb
+%Y %KB_MINE %WDrop mine
+%Y %KB_THOR %WThor's hammer
+%Y %KB_BURST %WBurst
+%pToggle equipment
+%Y %KB_STEALTH %WStealth
+%Y %KB_CLOAK %WCloak
+%Y %KB_XRADAR %WX-radar
+%Y %KB_ANTIWARP %WAntiWarp
+%Y %KB_MULTI %WMulti-fire guns
+# Help: keyboard (F1 for more)
+%pActions
+%Y %KB_REPEL %WRepel
+%Y %KB_WARP %WWarp
+%Y %KB_PORTAL %WSet portal
+%Y %KB_DECOY %WDrop decoy
+%Y %KB_ROCKET %WFire rocket
+%Y %KB_BRICK %WDrop brick
+%Y %KB_ATTACH %WAttach/detach
+%Y %KB_VIEWMAP %WShow map
+%pMiscellaneous
+%Y %KB_CYCLE %WStat box
+%Y %KB_PREV %WPrev ticked player
+%Y %KB_NEXT %WNext ticked player
+%Y %KB_PLAY %WToggle spectator mode
+%Y %KPrintScrn %WTake screenshot
+# Help: Chat (F1 for more)
+%BPublic Chat (Blue name> text)
+%WType a message and press enter to send a Public 
+message. To send other message types, put one of 
+these prefixes before your message:
+
+%YTeam Chat (Yellow name> text)
+// %Wor %Y'%W Sends message to your team
+
+%GPrivate Chat (Green name> text or (name)>text)
+%G/%W       Sends private message to ticked player
+%G::%W      Sends private message to person who last
+        messaged you
+%G:::%W     Keep pressing %G:%W to cycle through last 
+        five persons to message you
+%G:name:%W  Sends a private message to 'name'
+
+%BFrequency Chat %G(Green name> %BBlue text)
+"%W       Sends a message to ticked freq
+
+%GSquad Chat (Green (name)> text)
+%G#%W       Sends a message to all online squadmates
+%G:#sqd:%W  Sends a message to all online members of 
+        the squad called '%Gsqd%W'
+
+%bChat Channels (Brown x:name> text)
+;%W       Sends message to first chat channel
+%b;2;%W     Sends message to second chat channel
+%b;x;%W     Sends message to '%bx%W' chat channel (up to 10)
+
+%GSystem and Moderator messages are green%W, with 
+no name. These messages are usually important.
+# Help: Commands (F1 for more)
+%pGame Info
+ %Y?status%W     Displays your ship's current capabilities
+ %Y?time%W       Displays time remaining in current game (if timed)
+
+ %Y?flags%W      Lists who currently carries flags
+ %Y?score%W      Displays current score for most powerball games
+ %Y?crown%W      Returns the number of kills needed/left for crown
+
+ %Y?team%W       Lists the team members of ticked player
+ %Y?spec%W       Lists any persons spectating you
+
+ %Y?best%W       Shows your best score in timed games 
+ %Y?target=x%W   Sets your radar's minimum target bounty to '%Yx%W'
+
+ %Y?buy%W        Lists items available for purchase
+ %Y?buy item%W   Buys the specified item
+
+ %Y?scorereset%W Clears your win/loss and points (if enabled)
+# Help: Commands (F1 for more)
+%pChat%W
+ %Y?lines=x%W       Changes number of displayed message lines to '%Yx%W'
+ %Y?namelen=x%W     Changes number of letters shown in player names
+
+ %Y?ignore%W        Ignores messages from ticked player 
+ %Y?ignore <name>%W Ignores messages from %Y<name>%W
+ %Y?nopubchat%W     Toggles displaying %BPublic Chat%W on/off
+ %Y?obscene%W       Toggles ignoring zone defined obscenities (if any)
+ %Y?away <msg>%W    Set an away message.  Auto-responds to private
+                messages with %Y<msg>%W.  Type %Y?away%W to turn off
+
+ %Y?log%W           Toggles message logging on/off (Default: %bsession.log%W)
+ %Y?log <f>%W       Starts message logging to text file %Y<f>%W
+ %Y?logbuffer%W     Toggles message logging on/off, includes chat buffer
+                of messages prior to log start (Default: %bsession.log%W)
+ %Y?logbuffer <f>%W Starts message logging to text file %Y<f>%W, includes 
+                chat buffer
+
+ %Y?kill%W          Toggles displaying kill messages in chat area, 
+                center, or neither
+ %Y?enter%W         Toggles displaying player entrance messages in chat 
+                area, center, or neither
+ %Y?leave%W         Toggles displaying player leaving messages in chat 
+                area, center, or neither
+
+ %Y?message%W       Reads any messages you have in your Subspace mailbox
+ %Y?message name:msg%W Leaves a message with text '%Ymsg%W' for player '%Yname%W'
+                that will be delivered when that player is online
+%pChat Channels%W
+ %Y?chat=name%W     Joins chat channel '%Yname%W'
+ %Y?chat=name,fun%W Joins chat channels '%Yname%W' and '%Yfun%W' (you may join
+                up to 10 channels)
+ %Y?chat%W          Lists who is currently on your chat channels
+%pMacros%W
+ %Y?loadmacro <f>%W Loads your macros from file %Y<f>%W
+ %Y?savemacro <f>%W Saves your macros to file %Y<f>%W
+# Help: Commands (F1 for more)
+%pArenas%W
+ %Y?arena%W       Lists open arenas in zone (at top of screen)
+ %Y?go%W          Enters a random public arena 
+ %Y?go name%W     Enters arena called '%Yname%W' (arena names starting
+              with # are private arenas)
+ %Y?owner%W       Displays name of the arena owner
+%pUser Info%W
+ %Y?password=pw%W Changes your user name's secret password to '%Ypw%W'
+ %Y?usage%W       Displays your total usage time
+ %Y?userid%W      Returns your unique UserID number
+ %Y?find player%W Returns location (zone and/or arena) of player
+%pLatency
+ %Y?ping%W        Lists ping info (current, average, high, and low)
+ %Y?packetloss%W  Returns % of game packets lost from s2c (server to 
+              client) and c2s (client to server)
+ %Y?lag%W         Displays your ping and packetloss statistics
+%pSound%W
+ %Y?music=x%W     Sets your music volume to '%Yx%W' (0 - 10)
+ %Y?sound=x%W     Sets your sound volume to '%Yx%W' (0 - 10) 
+ %Y?alarm%W       Toggles message beep on/off
+%pMisc%W
+ %Y?sheep%W       Displays zone's sheep message and plays sheep sound
+ %Y?getnews%W     Downloads this zone's news.txt to game directory
+# Help: Commands (F1 for more)
+%pAssistance%W
+Your %Y<msg>%W is sent to any online zone moderators; Enter 
+relevant player name(s) and description of problem in %Y<msg>%W
+
+%Y?help <msg>%W            For general game assistance
+%Y?cheater <msg>%W         Use to report cheater activity
+%Y?illegal <msg>%W         Use to report any players not following 
+                       zone rules
+%pSquads
+ %Y?squadjoin=name:pw%W     Joins squad called '%Yname%W' with password '%Ypw%W'
+ %Y?squadcreate=name:pw%W   Creates squad called '%Yname%W' with password '%Ypw%W'
+ %Y?squadleave%W            Leaves your current squad
+ %Y?squadowner squadname%W  Returns name of owner of '%Ysquadname%W'
+ %Y?squad playername%W      Displays squad name of '%Yplayername%W'
+%pSquad Owner
+ %Y?squaddissolve%W         Deletes current squad 
+ %Y?squadpassword=pw%W      Changes squad's password to '%Ypw%W'
+ %Y?squadkick=playername%W  Removes '%Yplayername%W' from squad
+ %Y?squadgrant=playername%W Transfers ownership of squad to '%Yplayername%W'
+ %Y?squadlist%W             Lists all players on your squad
+# Help: Macros
+%pMessage Macros (substituted into messages)%W
+ %Y%%Ytickname%W    Name of ticked player
+ %Y%%Yselfname%W    Your name 
+ %Y%%Ysquad%W       Your squad name 
+ %Y%%Yfreq%W        Your frequency 
+ %Y%%Ybounty%W      Your bounty 
+ %Y%%Yflags%W       Number of flags you have 
+ %Y%%Yenergy%W      Your current energy 
+ %Y%%Ykiller%W      Person who killed you last
+ %Y%%Ykilled%W      Person you killed last
+ %Y%%Ycoord%W       Your coordinates
+ %Y%%Yarea%W        Your location
+ %Y%%Yred%W         Name(bounty:flags) of closest flag carrier
+ %Y%%Yredname%W     Name of closest flag carrier 
+ %Y%%Yredbounty%W   Bounty of closest flag carrier 
+ %Y%%Yredflags%W    Number of Flags held by closest flag carrier

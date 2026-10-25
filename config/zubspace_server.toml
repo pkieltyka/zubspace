@@ -1,0 +1,142 @@
+[server]
+# Local development defaults. CLI flags and ZUBSPACE_SERVER_* environment
+# variables override these values.
+bind = "127.0.0.1:9001"
+zone = "chaos-zone"
+# Runtime bundles are SHA-256 pinned by each zone.bundle. Replacing an
+# embedded identity requires both this operator opt-in and override=<same-id>
+# inside the authenticated bundle manifest.
+zone_bundle_root = "assets/zones"
+allow_zone_overrides = true
+# Player client IDs occupy 0-767; startup rejects values above 768 so live
+# registrations cannot alias. RTC fixed ranges must also provide this many
+# one-port-per-peer sockets.
+max_players = 500
+
+# Shared server bots are disabled by default. Set this above zero to advertise
+# server-owned bot roster entries and broadcast their positions to every client.
+# Full stats, weapons, inventory and allowed capabilities at every spawn.
+# Independent of the arena's InitialBounty (30 in Chaos).
+maxed_spawn_loadout = true
+bot_count = 0
+# Ship numbers 1–8, distributed evenly across the total bot_count.
+# Example: bot_count=15, bot_ship_types="1,2,4,5,7" gives three of each.
+bot_ship_types = "1"
+
+# Fixed server update rate in Hz. At 60 Hz the server drains queued positions,
+# batches relays, advances server-owned bots, and runs timed cleanup about every
+# 16.7ms. This is the current local WebRTC playtest default; revisit before
+# larger internet/200-player testing if bandwidth or CPU become the bottleneck.
+tick_rate = 60
+
+# Server log verbosity: error, warn, info, debug, trace, or off.
+log_level = "info"
+# Optional comma-separated target-prefix=level overrides. Empty keeps the
+# fallback level for every module. See etc/server/playtest.toml for quiet RTC.
+# Environment override: ZUBSPACE_SERVER_LOG_FILTER=rtc=info,webrtc=info
+log_filter = ""
+# "json" enables one structured event per line with precise UTC timestamps.
+# Environment override: ZUBSPACE_SERVER_LOG_FORMAT=json
+log_format = "text"
+# Separate operator Prometheus endpoint; empty disables it. Use a private bind.
+# Environment override: ZUBSPACE_SERVER_METRICS_LISTEN=127.0.0.1:9100
+metrics_listen = ""
+
+# Connection-quality monitor thresholds. Loss is a missing-echo fraction in
+# per-mille units (150 = 15%), not raw or directional UDP loss. RTT is round-trip
+# milliseconds. Recovery limits must be positive and strictly below their
+# corresponding degradation limits; max RTT is 100..2500ms, max loss 2..1000.
+# Environment overrides use ZUBSPACE_SERVER_QUALITY_<KEY>, e.g. MAX_RTT_MS.
+# The 30-second window, sufficient samples, sustained/recovery timing and
+# one-minute spectator hold are fixed server policy contracts.
+quality_max_rtt_ms = 600
+quality_max_loss_per_mille = 150
+quality_recovery_rtt_ms = 400
+quality_recovery_loss_per_mille = 100
+
+# Empty or unset writes logs to stdout. Set this to write server logs directly
+# to a file, for example "/tmp/zubspace-server.log".
+log_file = "/tmp/zubspace-server.log"
+
+# Flags and powerballs are deferred for this product iteration and are off by
+# default. Even with this true, a zone only runs objectives when its own
+# arena.conf authors an [Objective] section; every shipped zone authors none.
+# The flag/objective QA fixtures pass --enable-objectives explicitly.
+enable_objectives = false
+
+# Optional diagnostics and correction controls. Sustained-drift correction is
+# enabled by default after the exact application-barrier browser gates; set it
+# false for an explicit operator rollback. Parity sample logging stays off.
+sim_observe = false
+# Server-measured per-connection presentation target with a fixed 200ms ceiling.
+# Explicit fixed profiles remain available for diagnostics/acceptance. A browser
+# URL, reported ping, or receipt cannot select the policy.
+observer_network_profile = "auto"
+qa_trace_upload = false
+# Opt-in compact client presentation traces via /v1/debug/client-trace. Requires
+# a live authenticated game session. Detail goes beside log_file as client.log.
+# Also samples server gun/fragment near-hull decisions: at most 64 per 100
+# server ticks, deduplicated by exact projectile/target life, as structured INFO.
+client_debug_trace = false
+movement_snapback = true
+
+# Deterministic outbound-loss injection for browser recovery tests. Values in
+# 0..=1 are probabilities; values above 1 are percentages. Zero disables it.
+tx_loss_pct = 0
+
+# WebRTC transport. Local development uses ephemeral UDP ports and a wildcard
+# host candidate. Set rtc_udp_bind_ip to one canonical IPv4 address assigned to
+# a local interface when a directly reachable interface (for example Tailscale)
+# must be the gathered host candidate. This is intentionally independent from
+# the HTTP `bind` above. Empty preserves wildcard binding. A container/public
+# deployment should set an explicit range with at least max_players ports plus
+# working canonical `stun:host:port` and/or
+# `turn:host:port?transport=udp` URLs.
+# Nonempty rtc_external_ips is retained only to produce an actionable startup
+# error: webrtc-rs 0.21 does not apply that host-candidate remapping.
+rtc_udp_bind_ip = ""
+# Zero/unset keeps the WebRTC stack's 1191-byte SCTP packet default. For a
+# constrained directly-routed IPv4 interface, set the measured end-to-end path
+# MTU (for example 1280 on Tailscale). This fragments large data-channel
+# messages into safe SCTP packets without lowering message capacity.
+rtc_udp_path_mtu = 0
+rtc_udp_port_range = "ephemeral"
+rtc_external_ips = ""
+rtc_ice_urls = ""
+rtc_ice_username = ""
+rtc_ice_credential = ""
+rtc_ice_policy = "all"
+# Realtime events (shots, hits, projectile states) always go on the reliable
+# events channel. A second copy on the lossy game channel saves about one round
+# trip when a datagram carrying the first is lost, at the cost of doubling the
+# event bytes. "always" sends it, "on-loss" sends it only while the player's
+# connection-quality probes have shown loss in the last 30 s (or have fewer
+# than 20 probe results, roughly the first 13 s), "never" drops it.
+realtime_event_game_copy = "always"
+# SCTP acknowledgements made due by a second packet wait up to 20 ms for
+# outgoing data to carry them, instead of a UDP datagram of
+# their own. Losses still acknowledge at once. Set false to send them alone,
+# as upstream webrtc-rs does.
+rtc_defer_sack_to_data = true
+# Microseconds a WebRTC driver waits after a write before flushing, so one
+# tick's snapshot, events and acknowledgements on different channels share UDP
+# datagrams. Tokio rounds it up to a millisecond. 0 (default) flushes at once.
+rtc_write_coalesce_micros = 0
+
+# Per-player budget for snapshots and realtime events, in KiB/s, as a token
+# bucket that can also burst this much. Once it runs low the server holds
+# distant ships at their last acknowledged state; whole snapshots are skipped
+# only when even that does not fit. 16..=4096.
+send_budget_kib_per_second = 64
+
+# Signaling boundary. These permissive defaults are for localhost only. Public
+# deployments should set exact origins, a bearer token, HTTPS enforcement, and
+# trusted proxy headers while keeping the server listener private. HTTPS
+# enforcement requires trusted proxy headers because this listener is plaintext.
+# Boolean environment overrides accept only true, false, 1, or 0.
+signaling_allowed_origins = "*"
+signaling_auth_token = ""
+signaling_require_https = false
+signaling_trust_proxy_headers = false
+signaling_offer_rate_per_minute = 240
+signaling_max_offer_bytes = 131072

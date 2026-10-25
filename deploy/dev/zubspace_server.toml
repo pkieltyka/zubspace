@@ -1,0 +1,72 @@
+[server]
+# Dev game server for https://dev.zubspace.gg. scripts/deploy.sh mounts this file
+# at /etc/zubspace/zubspace_server.toml; deploy/compose.yml sets no
+# ZUBSPACE_SERVER_* variables, so every value here is the effective one.
+# Key meanings: config/zubspace_server.toml. Differences from prod: ports,
+# DEBUG logging to rotated files, and client presentation traces.
+
+# Keep the port equal to ZUBSPACE_SERVER_HTTP_PORT in compose.env.
+bind = "127.0.0.1:9301"
+zone = "chaos-zone"
+zone_bundle_root = "assets/zones"
+allow_zone_overrides = true
+# Prod's 500, so load tests on dev can reach prod's ceiling; the UDP range below
+# matches it.
+max_players = 500
+tick_rate = 60
+
+maxed_spawn_loadout = true
+bot_count = 15
+bot_ship_types = "1,4,5,7"
+
+# Gameplay and session DEBUG without per-packet transport chatter, as in
+# etc/server/playtest.toml. Set log_filter = "" for full transport detail.
+log_level = "debug"
+log_filter = "rtc=info,webrtc=info"
+log_format = "json"
+# ~/zubspace/dev/logs/server.log on the host; client.log (presentation traces)
+# lands beside it. deploy/host/logrotate.conf caps both.
+log_file = "/var/log/zubspace/server.log"
+metrics_listen = "127.0.0.1:9300"
+
+quality_max_rtt_ms = 600
+quality_max_loss_per_mille = 150
+quality_recovery_rtt_ms = 400
+quality_recovery_loss_per_mille = 100
+
+enable_objectives = false
+sim_observe = false
+observer_network_profile = "clean-lan"
+qa_trace_upload = false
+# Every joined browser uploads a compact presentation window about every 20
+# seconds (docs/observability.md, "Client presentation traces").
+client_debug_trace = true
+movement_snapback = true
+tx_loss_pct = 0
+
+rtc_udp_bind_ip = "85.155.184.54"
+rtc_udp_path_mtu = 0
+# Requires the matching firewall allowance in deploy/host/setup.sh before rollout.
+# This 500-port range does not overlap prod's 9402-9901.
+rtc_udp_port_range = "9902-10401"
+rtc_external_ips = ""
+rtc_ice_urls = ""
+rtc_ice_username = ""
+rtc_ice_credential = ""
+rtc_ice_policy = "all"
+# Network efficiency settings, the same as prod (docs/networking.md):
+# - realtime event copies on the lossy game channel only for players whose
+#   connection-quality probes show loss;
+# - a 96 KiB/s per-player snapshot/event budget, above the 54-60 KB/s a
+#   48-ship crowd needs;
+# - a short write wait (about 1 ms) so a tick's messages share UDP datagrams.
+realtime_event_game_copy = "on-loss"
+send_budget_kib_per_second = 96
+rtc_write_coalesce_micros = 500
+
+signaling_allowed_origins = "https://dev.zubspace.gg"
+signaling_auth_token = ""
+signaling_require_https = true
+signaling_trust_proxy_headers = true
+signaling_offer_rate_per_minute = 600
+signaling_max_offer_bytes = 131072

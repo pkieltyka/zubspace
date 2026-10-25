@@ -1,0 +1,30 @@
+# Dev Prometheus, listening on 127.0.0.1:9091 on the host. From a workstation:
+#   ssh -L 9091:127.0.0.1:9091 peter@zubspace-prod   then open http://127.0.0.1:9091
+global:
+  scrape_interval: 5s
+  scrape_timeout: 2s
+  evaluation_interval: 15s
+
+storage:
+  tsdb:
+    retention:
+      time: 14d
+      size: 5GB
+
+scrape_configs:
+  - job_name: zubspace
+    static_configs:
+      - targets: ["127.0.0.1:9300"]
+        labels: { env: dev }
+  - job_name: cloudflared
+    static_configs:
+      - targets: ["127.0.0.1:20242"]
+        labels: { env: dev }
+  # Host metrics from the node-exporter that the prod project runs.
+  - job_name: node
+    static_configs:
+      - targets: ["127.0.0.1:9180"]
+  - job_name: prometheus
+    static_configs:
+      - targets: ["127.0.0.1:9091"]
+        labels: { env: dev }

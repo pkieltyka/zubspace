@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Terminate leftover test browsers: every process owning a window with the
+# test class gets SIGTERM, then SIGKILL if its windows are still mapped after
+# five seconds. Test harnesses normally clean up after themselves; use this
+# after a crash or an interrupted run.
+set -euo pipefail
+. "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
+
+hypr_check || exit 0
+
+pids=$(hypr_lua '
+  local seen, list = {}, {}
+  for _, w in ipairs(hl.get_windows()) do
+    if w.class == CLASS and w.pid and w.pid > 0 and not seen[w.pid] then
+      seen[w.pid] = true
+      list[#list + 1] = tostring(w.pid)
+    end
+  end
+  return #list > 0 and table.concat(list, " ") or "none"
+')
+if [ "$pids" = "none" ]; then
+  log "no open windows with class $ZUBSPACE_E2E_WINDOW_CLASS"
+  exit 0
+fi
+
+log "sending SIGTERM to pid(s): $pids"
+# shellcheck disable=SC2086
+kill -TERM $pids 2>/dev/null || true
+remaining=$(hypr_test_window_count)
+for _ in $(seq 1 10); do
+  [ "$remaining" = "0" ] && break
+  sleep 0.5
+  remaining=$(hypr_test_window_count)
+done
+if [ "$remaining" != "0" ]; then
+  log "$remaining window(s) still open; sending SIGKILL"
+  # shellcheck disable=SC2086
+  kill -KILL $pids 2>/dev/null || true
+  sleep 1
+  remaining=$(hypr_test_window_count)
+fi
+log "test windows open now: $remaining"
+[ "$remaining" = "0" ]

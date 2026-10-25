@@ -1,0 +1,57 @@
+{
+  "producerHead": "8137398439c5b3ac0946860a2ec8a03a5fe5972c",
+  "source": "/home/peter/.local/state/zubspace/acceptance-worktrees/final-isolated-12489f9/.debug/final-accumulated-8137398/artifacts/zubspace-ship_abilities-1000536799290-390367-failure",
+  "plan": {
+    "target": {
+      "x": 8488,
+      "y": 8024
+    },
+    "hullRadiusPx": 20,
+    "stageRadiusPx": 48,
+    "maxLegPx": 768,
+    "routes": [
+      {
+        "from": {
+          "x": 8120,
+          "y": 8888
+        },
+        "drivePoints": [
+          {
+            "x": 8328,
+            "y": 8152
+          },
+          {
+            "x": 8488,
+            "y": 8152
+          },
+          {
+            "x": 8488,
+            "y": 8024
+          }
+        ],
+        "distancePx": 1052.8267777738956
+      },
+      {
+        "from": {
+          "x": 9147.15,
+          "y": 7448.31
+        },
+        "drivePoints": [
+          {
+            "x": 8488,
+            "y": 7832
+          },
+          {
+            "x": 8488,
+            "y": 8024
+          }
+        ],
+        "distancePx": 954.6904605408404
+      }
+    ]
+  },
+  "observedShip": 1,
+  "observedLifeSeq": 2,
+  "observedPickupCount": 1,
+  "observedNotification": "MultiPrize!"
+}

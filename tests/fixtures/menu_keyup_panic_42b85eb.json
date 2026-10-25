@@ -1,0 +1,39 @@
+{
+  "producer": "42b85eb3132c6c5a0576e9451730c1404da52d37",
+  "sourceArtifact": "zubspace-menu_shortcuts-1000525220152-1786894",
+  "sourceSha256": "e8a92b2ba725b311c6810a2abf673263ccd86506ae3d36d8b4727f63ca8c9b11",
+  "console": {
+    "available": true,
+    "source": "CDP",
+    "complete": true,
+    "failure": null,
+    "total": 3,
+    "warnings": 0,
+    "errors": 3,
+    "rejectedDraws": 0,
+    "omitted": 0,
+    "limits": {
+      "events": 256,
+      "text": 2048,
+      "rejectionExamples": 8
+    },
+    "rejectionExamples": [],
+    "events": [
+      {
+        "type": "exception",
+        "text": "RuntimeError: unreachable\n    at zubspace-d02dd722316bbfbf.wasm._RNvCsjJ6pmSBbkgH_7___rustc12___rust_abort (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4771]:0x316456)\n    at zubspace-d02dd722316bbfbf.wasm._RNvCsjJ6pmSBbkgH_7___rustc18___rust_start_panic (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4756]:0x31444f)\n    at zubspace-d02dd722316bbfbf.wasm._RNvCsjJ6pmSBbkgH_7___rustc10rust_panic (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4770]:0x31644b)\n    at zubspace-d02dd722316bbfbf.wasm._RNvNtCsh7FExokWBxt_3std9panicking15panic_with_hook (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4776]:0x316846)\n    at zubspace-d02dd722316bbfbf.wasm._RNCNvNtCsh7FExokWBxt_3std9panicking13panic_handler0B5_ (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4748]:0x314315)\n    at zubspace-d02dd722316bbfbf.wasm._RINvNtNtCsh7FExokWBxt_3std3sys9backtrace26___rust_end_short_backtraceNCNvNtB6_9panicking13panic_handler0zEB6_ (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4747]:0x31427d)\n    at zubspace-d02dd722316bbfbf.wasm._RNvCsjJ6pmSBbkgH_7___rustc17rust_begin_unwind (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4772]:0x316489)\n    at zubspace-d02dd722316bbfbf.wasm._RNvNtCsbkmalhn7LxZ_4core9panicking9panic_fmt (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4999]:0x326fdd)\n    at zubspace-d02dd722316bbfbf.wasm._RNvNtCsbkmalhn7LxZ_4core4cell22panic_already_borrowed (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4997]:0x326f82)\n    at zubspace-d02dd722316bbfbf.wasm.key_up (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4669]:0x30c3af)",
+        "textTruncated": false
+      },
+      {
+        "type": "exception",
+        "text": "RuntimeError: unreachable\n    at zubspace-d02dd722316bbfbf.wasm._RNvCsjJ6pmSBbkgH_7___rustc12___rust_abort (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4771]:0x316456)\n    at zubspace-d02dd722316bbfbf.wasm._RNvCsjJ6pmSBbkgH_7___rustc18___rust_start_panic (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4756]:0x31444f)\n    at zubspace-d02dd722316bbfbf.wasm._RNvCsjJ6pmSBbkgH_7___rustc10rust_panic (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4770]:0x31644b)\n    at zubspace-d02dd722316bbfbf.wasm._RNvNtCsh7FExokWBxt_3std9panicking15panic_with_hook (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4776]:0x316846)\n    at zubspace-d02dd722316bbfbf.wasm._RNCNvNtCsh7FExokWBxt_3std9panicking13panic_handler0B5_ (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4748]:0x314315)\n    at zubspace-d02dd722316bbfbf.wasm._RINvNtNtCsh7FExokWBxt_3std3sys9backtrace26___rust_end_short_backtraceNCNvNtB6_9panicking13panic_handler0zEB6_ (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4747]:0x31427d)\n    at zubspace-d02dd722316bbfbf.wasm._RNvCsjJ6pmSBbkgH_7___rustc17rust_begin_unwind (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4772]:0x316489)\n    at zubspace-d02dd722316bbfbf.wasm._RNvNtCsbkmalhn7LxZ_4core9panicking9panic_fmt (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4999]:0x326fdd)\n    at zubspace-d02dd722316bbfbf.wasm._RNvNtCsbkmalhn7LxZ_4core4cell22panic_already_borrowed (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4997]:0x326f82)\n    at zubspace-d02dd722316bbfbf.wasm.key_up (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4669]:0x30c3af)",
+        "textTruncated": false
+      },
+      {
+        "type": "exception",
+        "text": "RuntimeError: unreachable\n    at zubspace-d02dd722316bbfbf.wasm._RNvCsjJ6pmSBbkgH_7___rustc12___rust_abort (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4771]:0x316456)\n    at zubspace-d02dd722316bbfbf.wasm._RNvCsjJ6pmSBbkgH_7___rustc18___rust_start_panic (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4756]:0x31444f)\n    at zubspace-d02dd722316bbfbf.wasm._RNvCsjJ6pmSBbkgH_7___rustc10rust_panic (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4770]:0x31644b)\n    at zubspace-d02dd722316bbfbf.wasm._RNvNtCsh7FExokWBxt_3std9panicking15panic_with_hook (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4776]:0x316846)\n    at zubspace-d02dd722316bbfbf.wasm._RNCNvNtCsh7FExokWBxt_3std9panicking13panic_handler0B5_ (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4748]:0x314315)\n    at zubspace-d02dd722316bbfbf.wasm._RINvNtNtCsh7FExokWBxt_3std3sys9backtrace26___rust_end_short_backtraceNCNvNtB6_9panicking13panic_handler0zEB6_ (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4747]:0x31427d)\n    at zubspace-d02dd722316bbfbf.wasm._RNvCsjJ6pmSBbkgH_7___rustc17rust_begin_unwind (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4772]:0x316489)\n    at zubspace-d02dd722316bbfbf.wasm._RNvNtCsbkmalhn7LxZ_4core9panicking9panic_fmt (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4999]:0x326fdd)\n    at zubspace-d02dd722316bbfbf.wasm._RNvNtCsbkmalhn7LxZ_4core4cell22panic_already_borrowed (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4997]:0x326f82)\n    at zubspace-d02dd722316bbfbf.wasm.key_up (wasm://wasm/zubspace-d02dd722316bbfbf.wasm-1462ab1a:wasm-function[4669]:0x30c3af)",
+        "textTruncated": false
+      }
+    ]
+  }
+}

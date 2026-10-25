@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# Run one command with the test-browser workspace rule active:
+#
+#   scripts/e2e-hyprland-tools/run -- make test-e2e-combat
+#   scripts/e2e-hyprland-tools/run --keep -- node tests/e2e/single_bullet_damage.mjs
+#
+# Registers the rule, runs the command, then disables the rule again unless
+# --keep is given or `enable` had already been run by hand. Outside Hyprland
+# the command simply runs as-is. The command's exit status is preserved.
+set -uo pipefail
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+. "$here/_lib.sh"
+
+usage() {
+  cat >&2 <<'USAGE'
+usage: scripts/e2e-hyprland-tools/run [--keep] [--] <command> [args...]
+  --keep   leave the workspace rule enabled after the command exits
+USAGE
+}
+
+keep=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --keep) keep=1; shift ;;
+    --) shift; break ;;
+    -h|--help) usage; exit 0 ;;
+    -*) usage; die "unknown option: $1" ;;
+    *) break ;;
+  esac
+done
+if [ $# -eq 0 ]; then
+  usage
+  exit 64
+fi
+
+if ! hypr_session_present; then
+  exec "$@"
+fi
+hypr_check
+
+# Firefox honours --class only through XWayland (native Wayland keeps the app
+# id "firefox"); Chrome already runs through XWayland via --ozone-platform=x11.
+export MOZ_ENABLE_WAYLAND="${MOZ_ENABLE_WAYLAND:-0}"
+export GDK_BACKEND="${GDK_BACKEND:-x11}"
+
+state=$("$here/enable") || exit $?
+
+# shellcheck disable=SC2329  # invoked through the EXIT trap below
+cleanup() {
+  if [ "$keep" = 1 ]; then
+    log "leaving the workspace rule enabled (--keep); run scripts/e2e-hyprland-tools/disable when done"
+  elif [ "$state" = "already-enabled" ]; then
+    log "the workspace rule was enabled before this run; leaving it enabled"
+  else
+    "$here/disable" >/dev/null || true
+  fi
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+"$@"
+status=$?
+exit "$status"

@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# Register (or re-enable) the Hyprland runtime window rule that opens every
+# window carrying the zubspace test browser class on the silent background
+# workspace. Idempotent; prints one of: enabled, re-enabled, already-enabled.
+#
+# The rule handle is kept in the Lua global _G.__zubspace_e2e for the life of
+# the Hyprland session (a Hyprland reload drops it together with the rule).
+set -euo pipefail
+. "$(dirname "${BASH_SOURCE[0]}")/_lib.sh"
+
+hypr_check || exit 0
+
+result=$(hypr_lua '
+  -- Bump SPEC whenever the rule definition below changes so a stale rule
+  -- registered earlier in this Hyprland session is replaced, not re-enabled.
+  local SPEC = "workspace-silent+focus_on_activate=false+suppress_event=activate+float-1440x1000+render-unfocused"
+  local G = _G.__zubspace_e2e
+  if G and G.rules and #G.rules > 0 and G.class == CLASS and G.workspace == WORKSPACE and G.spec == SPEC then
+    for _, rule in ipairs(G.rules) do rule:set_enabled(true) end
+    local was = G.enabled
+    G.enabled = true
+    return was and "already-enabled" or "re-enabled"
+  end
+  if G and G.rules then
+    -- A previous enable used another class, workspace, or rule spec: retire it.
+    for _, rule in ipairs(G.rules) do rule:set_enabled(false) end
+  end
+  local rules = {
+    hl.window_rule({
+      name = "zubspace-e2e-workspace",
+      match = { class = "^" .. CLASS .. "$" },
+      workspace = WORKSPACE .. " silent",
+      -- CDP Page.bringToFront (called by the E2E helpers) is an activation
+      -- request. With misc:focus_on_activate = true Hyprland would follow it
+      -- and switch the user to the test workspace; block that per window.
+      focus_on_activate = false,
+      -- Native GPU compositing needs frame callbacks while this workspace is
+      -- hidden; otherwise asset loading can stop before RTC even starts.
+      render_unfocused = true,
+      suppress_event = "activate",
+      -- Alone on its workspace a tiled test window fills the whole monitor,
+      -- and swiftshader then renders several times the pixels of the Xvfb
+      -- gates (1440x1000 screens), which drops the frame cadence below what
+      -- the cadence gates require. Float at the Xvfb size instead.
+      float = true,
+      size = { "1440", "1000" },
+    }),
+  }
+  _G.__zubspace_e2e = {
+    class = CLASS,
+    workspace = WORKSPACE,
+    rules = rules,
+    spec = SPEC,
+    enabled = true,
+    since = os.date("%Y-%m-%d %H:%M:%S"),
+  }
+  return "enabled"
+')
+log "$result: windows with class ^${ZUBSPACE_E2E_WINDOW_CLASS}\$ open on workspace ${ZUBSPACE_E2E_HYPR_WORKSPACE} (silent)"
+printf '%s\n' "$result"

@@ -1,0 +1,33 @@
+# Cargo build output. Both Dockerfile stages build fresh inside the image.
+target/
+
+# Local dev artifacts.
+dist/
+.debug/
+.claude/
+.cursor/
+
+# Git, editor, OS noise.
+.git
+.gitignore
+.github/
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Tests + tools that aren't needed at build/runtime. (We DO need
+# `tools/build_wasm_release.mjs` for the client; the more aggressive
+# excludes here would break that — `tools/` is whitelisted via the
+# client Dockerfile's COPY.)
+tests/
+
+# Operator credentials; never send them as image build context.
+.secrets/
+
+# Logs / scratch files.
+*.log
+/tmp/
+# The notifier is its own image, built with notifier/ as the context.
+notifier/
