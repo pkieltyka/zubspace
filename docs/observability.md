@@ -58,10 +58,13 @@ emits it ([`log_targets.rs`](../src/bin/zubspace_server/log_targets.rs)):
 - `zubspace_server::reliable::acks`
 - `zubspace_server::rtc::acks`
 
-A filter on the parent module still matches them. Prod sets exactly these to
-`warn`, keeping startup, joins, leaves, disconnects, connection-quality windows
-and every warning and error; dev logs everything at DEBUG. A server test reads
-both deployed configs to keep this split.
+A filter on the parent module still matches them. Prod logs the combat targets
+at INFO and sets the two acknowledgement targets to `warn`. It also enables
+DEBUG for a few low-volume modules: `observability` (browser experience
+reports), `arena::positions` (projectile spawns and snap-back replay detail),
+`server_damage` (deaths with killer and weapon), `player_events::prizes` and
+`connection_quality` (probe audits). Dev logs everything at DEBUG. A server
+test reads both deployed configs to keep this split.
 
 ### Notable events
 
