@@ -6,8 +6,11 @@ use crate::authority_identity::{
 use crate::zone::server_spawn_coordinates;
 use std::collections::VecDeque;
 
+#[path = "bots/difficulty.rs"]
+mod difficulty;
 #[path = "bots/names.rs"]
 mod names;
+pub(crate) use difficulty::BotDifficulty;
 
 fn shuffled_xradar_assignments(count: usize, entropy: &[u8]) -> Vec<bool> {
     let mut indices = (0..count).collect::<Vec<_>>();
@@ -29,6 +32,9 @@ pub(crate) const E2E_STATIONARY_AFTER_HUMAN_DAMAGE_LEAD_TICKS: u32 = 90;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ServerBot {
+    pub(crate) difficulty: BotDifficulty,
+    /// Selected combat target and its acquisition tick (100 Hz Continuum clock).
+    pub(crate) combat_target: Option<(u16, u32)>,
     pub(crate) maxed_spawn_loadout: bool,
     pub(crate) player: PlayerSummary,
     pub(crate) session_id: PlayerSessionId,
@@ -287,6 +293,7 @@ impl ServerBot {
         self.bounty = crate::arena_settings::arena_ship_initial_bounty(ship);
         self.last_step_tick = tick;
         self.last_fire_tick = None;
+        self.combat_target = None;
         self.last_fire_weapon_data = None;
         self.consecutive_gun_volleys = 0;
         self.super_until_tick = None;
@@ -610,6 +617,13 @@ impl ServerState {
             );
         }
         let detector_assignments = shuffled_xradar_assignments(count, &detector_entropy);
+        let mut difficulty_entropy = vec![0u8; count * 8];
+        if getrandom::fill(&mut difficulty_entropy).is_err() {
+            tracing::warn!(
+                "bot difficulty shuffle unavailable; using deterministic tier assignment"
+            );
+        }
+        let difficulties = difficulty::shuffled_difficulties(count, &difficulty_entropy);
         for (index, name) in names::bot_names_avoiding(count, &reserved_names)
             .into_iter()
             .enumerate()
@@ -619,6 +633,8 @@ impl ServerState {
             let radius = 96.0 + (index % 5) as f32 * 32.0;
             let tangent = angle + std::f32::consts::FRAC_PI_2;
             let mut bot = ServerBot {
+                difficulty: difficulties[index],
+                combat_target: None,
                 maxed_spawn_loadout: self.config.maxed_spawn_loadout,
                 player: PlayerSummary {
                     id,
@@ -687,10 +703,15 @@ impl ServerState {
                 e2e_passive_fire_life_seqs: e2e_passive_fire_life_seqs.clone(),
             };
             bot.reset_loadout_at_tick(0);
+            tracing::debug!(player_id = id, name = %bot.player.name,
+                difficulty = bot.difficulty.label(), "bot difficulty assigned");
             self.bots.push(bot);
         }
         tracing::info!(
             bot_count = self.bots.len(),
+            hard_bots = self.bots.iter().filter(|bot| bot.difficulty == BotDifficulty::Hard).count(),
+            medium_bots = self.bots.iter().filter(|bot| bot.difficulty == BotDifficulty::Medium).count(),
+            easy_bots = self.bots.iter().filter(|bot| bot.difficulty == BotDifficulty::Easy).count(),
             xradar_bot_ids = ?self.bots.iter().filter(|bot| bot.xradar).map(|bot| bot.player.id).collect::<Vec<_>>(),
             "bot detector roster initialized"
         );

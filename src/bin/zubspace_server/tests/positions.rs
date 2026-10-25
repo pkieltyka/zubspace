@@ -8901,6 +8901,224 @@ fn impossible_complete_direction_history_rejects_before_any_authoritative_mutati
     );
 }
 
+// Prod: damage removed a Rotation prize while the pilot was turning. The
+// server validated the next positions at the reduced rate before the browser
+// could have learned of the loss, rejected them as an impossible turn and
+// snapped the ship back once its input history ran out.
+#[test]
+fn rotation_lost_to_damage_mid_turn_admits_turns_already_in_flight() {
+    let state = Arc::new(Mutex::new(ServerState::default()));
+    let (tx, _rx) = mpsc::channel();
+    let player_id = register_connection(&state, tx);
+    join_arena(&state, player_id, 0);
+    let previous_sequence = 4_000_u16;
+    let turn_steps = 4_u16;
+    let current_sequence = previous_sequence + turn_steps;
+    let anchor_tick = 20_000_u32;
+    let accepted_tick = anchor_tick + 7;
+    let (x, y) = (8_200_u16, 8_200_u16);
+    let initial_orientation = 0.27_f32;
+    let left_turn = |orientation: f32, rotation_per_second: f32| {
+        crate::shared_player_movement::rotate_orientation_step(
+            orientation,
+            true,
+            false,
+            rotation_per_second * (1.0 / 60.0),
+        )
+    };
+    let push_input = |client: &mut crate::state::ClientHandle, sequence: u16, orientation: f32| {
+        let input = crate::state::ClientInputObservation {
+            bits: 1 << 2,
+            direction: crate::continuum_position::protocol_direction(orientation),
+        };
+        client
+            .recent_input_records
+            .push_back(crate::state::SequencedInputObservation {
+                sequence,
+                input,
+                door_seed: 0,
+                door_phase_tick: 0,
+            });
+        client.last_input_seq = Some(sequence);
+        client.last_input_record = Some(input);
+    };
+
+    let (identity, upgraded_rotation, tail_orientation) = {
+        let mut locked = state.lock().expect("state");
+        let client = locked.clients.get_mut(&player_id).expect("client");
+        client.reset_server_runtime_for_ship_at_tick(anchor_tick);
+        client.life_position_sequence_base = None;
+        client.alive = true;
+        client.respawn_at_tick = None;
+        // The maxed spawn loadout already holds Rotation upgrades to lose.
+        let upgraded_rotation = client.server_rotation_per_second;
+
+        let direction = crate::continuum_position::protocol_direction(initial_orientation);
+        let mut previous = client_position_packet_with_sequence(0, x, y, previous_sequence);
+        previous[1] = direction;
+        previous[16..18].copy_from_slice(&client.server_bounty.to_le_bytes());
+        previous[18..20].copy_from_slice(&client.server_energy.to_le_bytes());
+        client.last_position =
+            Some(large_position_from_client(player_id, &previous).expect("previous position"));
+        client.last_position_sequence = Some(previous_sequence);
+        client.last_position_server_tick = Some(anchor_tick);
+        let initial_state = crate::state::ServerSimMovement {
+            position_x: x as f32,
+            position_y: y as f32,
+            orientation: initial_orientation,
+            velocity_x: 0.0,
+            velocity_y: 0.0,
+            energy: client.server_energy as f32,
+            max_energy: client.server_max_energy as f32,
+        };
+        let anchor = crate::state::CanonicalPositionWitness {
+            sequence: previous_sequence,
+            life_seq: client.life_seq,
+            state: initial_state,
+            wire_x: x,
+            wire_y: y,
+            wire_velocity_x: 0,
+            wire_velocity_y: 0,
+            direction,
+            door_seed: 0,
+            door_phase_tick: 0,
+        };
+        client.canonical_position_witnesses.clear();
+        client.canonical_position_witnesses.push_back(anchor);
+        client.canonical_movement_witness = Some(anchor);
+        seed_fixture_motion_baseline(client);
+        client.server_sim_state = Some(initial_state);
+        client.server_sim_anchor_tick = Some(anchor_tick);
+        client.server_sim_input_bits = Some(0);
+        client.recent_input_records.clear();
+
+        // The browser turns left at its upgraded rate. Damage removes the
+        // upgrade after the server has seen only the first of these inputs;
+        // the rest were generated before the browser could know.
+        let mut orientation = left_turn(initial_orientation, upgraded_rotation);
+        push_input(client, previous_sequence + 1, orientation);
+        crate::server_damage::apply_damage_prize_loss_for_test(client, anchor_tick + 2, 1, 3);
+        assert!(client.server_rotation_per_second < upgraded_rotation);
+        for offset in 2..=turn_steps {
+            orientation = left_turn(orientation, upgraded_rotation);
+            push_input(client, previous_sequence + offset, orientation);
+        }
+        (
+            locked.active_life_identity(player_id).expect("life"),
+            upgraded_rotation,
+            orientation,
+        )
+    };
+    let direction = crate::continuum_position::protocol_direction(tail_orientation);
+
+    // The in-flight turn is impossible at the reduced rate: without the grace
+    // this is exactly the prod rejection.
+    {
+        let locked = state.lock().expect("state");
+        let client = &locked.clients[&player_id];
+        let mut without_grace = client.clone();
+        without_grace.damage_movement_grace = None;
+        assert_eq!(
+            crate::sim_observation::validate_position_input_witness(
+                &without_grace,
+                current_sequence,
+                direction,
+                accepted_tick,
+            ),
+            Err(crate::sim_observation::PositionInputWitnessError::InvalidDirectionHistory)
+        );
+        assert!(
+            crate::sim_observation::validate_position_input_witness(
+                client,
+                current_sequence,
+                direction,
+                accepted_tick,
+            )
+            .is_ok()
+        );
+    }
+
+    // The browser's exact tail, replayed at the rate it actually used.
+    let (tail, bounty, energy) = {
+        let locked = state.lock().expect("state");
+        let client = &locked.clients[&player_id];
+        let mut upgrades = crate::sim_observation::movement_upgrades_for_client(client);
+        upgrades.rotation = upgraded_rotation;
+        let (spawn_x, spawn_y) = server_spawn_coordinates(locked.zone_map());
+        let replay = crate::sim_observation::replay_canonical_position_gap(
+            client,
+            locked.zone_map(),
+            false,
+            false,
+            false,
+            upgrades,
+            &[],
+            current_sequence,
+            accepted_tick,
+            spawn_x,
+            spawn_y,
+        )
+        .expect("the in-flight turn replays at the upgraded rate");
+        let tail = *replay.witnesses.last().expect("replayed tail");
+        assert_eq!(tail.state.orientation.to_bits(), tail_orientation.to_bits());
+        (tail, client.server_bounty, client.server_energy)
+    };
+    let mut report =
+        client_position_packet_with_sequence(0, tail.wire_x, tail.wire_y, current_sequence);
+    report[1] = tail.direction;
+    report[6..8].copy_from_slice(&tail.wire_velocity_x.to_le_bytes());
+    report[14..16].copy_from_slice(&tail.wire_velocity_y.to_le_bytes());
+    report[16..18].copy_from_slice(&bounty.to_le_bytes());
+    report[18..20].copy_from_slice(&energy.to_le_bytes());
+    set_client_position_canonical_state(
+        &mut report,
+        tail.state.position_x,
+        tail.state.position_y,
+        tail.state.velocity_x,
+        tail.state.velocity_y,
+        tail.state.orientation,
+    );
+
+    assert!(
+        crate::arena::accept_position_relay_for_life_at_tick(
+            &state,
+            identity,
+            &report,
+            accepted_tick,
+        )
+        .is_some(),
+        "a turn generated before the browser learned of the loss is admitted"
+    );
+    let locked = state.lock().expect("state");
+    let client = &locked.clients[&player_id];
+    assert_eq!(client.last_position_sequence, Some(current_sequence));
+    assert!(client.pending_movement_correction.is_none());
+    assert_eq!(
+        client
+            .canonical_movement_witness
+            .map(|witness| witness.state.orientation.to_bits()),
+        Some(tail_orientation.to_bits())
+    );
+    // The grace is bounded: at most one second of input in the same life.
+    assert!(
+        client
+            .damage_movement_grace_tuning(current_sequence)
+            .is_some()
+    );
+    assert!(
+        client
+            .damage_movement_grace_tuning(previous_sequence + 1 + 61)
+            .is_none()
+    );
+    let mut next_life = client.clone();
+    next_life.life_seq = next_life.life_seq.wrapping_add(1);
+    assert!(
+        next_life
+            .damage_movement_grace_tuning(current_sequence)
+            .is_none()
+    );
+}
+
 #[test]
 fn attacker_selected_adjacent_sub_bin_rejects_weapon_before_projectile_spawn() {
     let state = Arc::new(Mutex::new(ServerState::default()));

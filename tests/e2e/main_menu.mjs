@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { acknowledgeControlsWelcome } from "../../tools/browser_controls_welcome.mjs";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -309,6 +310,7 @@ async function main() {
       // A held Enter cannot submit again or open gameplay chat during loading.
       await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, autoRepeat: true });
       await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
+      await acknowledgeControlsWelcome(send, evaluate);
     }});
     await rendezvousPlayers(alpha, beta, server);
     await waitForPlayersReady(alpha, beta, server);

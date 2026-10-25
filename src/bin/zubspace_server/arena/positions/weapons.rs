@@ -21,11 +21,41 @@ const _: () = assert!(crate::log_targets::is_child_of(
     module_path!()
 ));
 
+/// Why a position's weapon is blocked before the shared fire rules run. The
+/// fire rules only need to know that it is; the rejection log names the
+/// cause, so a shot without a verified combat view is not reported as an
+/// arena rule.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct WeaponBlock {
+    pub(super) bomb_safety: bool,
+    pub(super) mine_limit: bool,
+    pub(super) objective_ball: bool,
+    /// Why the shot could not be bound to the shooter's combat view.
+    pub(super) combat_view: Option<&'static str>,
+}
+
+impl WeaponBlock {
+    #[cfg(test)]
+    pub(super) fn objective_ball(blocked: bool) -> Self {
+        Self {
+            objective_ball: blocked,
+            ..Self::default()
+        }
+    }
+
+    fn cause(self) -> Option<&'static str> {
+        self.combat_view
+            .or(self.bomb_safety.then_some("bomb_safety"))
+            .or(self.mine_limit.then_some("mine_limit"))
+            .or(self.objective_ball.then_some("objective_ball"))
+    }
+}
+
 pub(super) fn accepted_position_weapon(
     sender: &mut ClientHandle,
     snapshot: ClientPositionSnapshot,
     in_safe_tile: bool,
-    blocked_by_arena_rule: bool,
+    block: WeaponBlock,
     server_fire_tick: u32,
     flagger_active: bool,
 ) -> u16 {
@@ -33,7 +63,7 @@ pub(super) fn accepted_position_weapon(
         sender,
         snapshot,
         in_safe_tile,
-        blocked_by_arena_rule,
+        block,
         server_fire_tick,
         flagger_active,
         true,
@@ -55,7 +85,7 @@ pub(super) fn preview_accepted_position_weapon(
     sender: &ClientHandle,
     snapshot: ClientPositionSnapshot,
     in_safe_tile: bool,
-    blocked_by_arena_rule: bool,
+    block: WeaponBlock,
     server_fire_tick: u32,
     flagger_active: bool,
 ) -> u16 {
@@ -63,7 +93,7 @@ pub(super) fn preview_accepted_position_weapon(
         sender,
         snapshot,
         in_safe_tile,
-        blocked_by_arena_rule,
+        block,
         server_fire_tick,
         flagger_active,
     )
@@ -78,7 +108,7 @@ pub(super) fn preview_position_weapon(
     sender: &ClientHandle,
     snapshot: ClientPositionSnapshot,
     in_safe_tile: bool,
-    blocked_by_arena_rule: bool,
+    block: WeaponBlock,
     server_fire_tick: u32,
     flagger_active: bool,
 ) -> PositionWeaponPreview {
@@ -87,7 +117,7 @@ pub(super) fn preview_position_weapon(
         &mut prospective,
         snapshot,
         in_safe_tile,
-        blocked_by_arena_rule,
+        block,
         server_fire_tick,
         flagger_active,
         false,
@@ -103,7 +133,7 @@ fn accepted_position_weapon_with_logging(
     sender: &mut ClientHandle,
     snapshot: ClientPositionSnapshot,
     in_safe_tile: bool,
-    blocked_by_arena_rule: bool,
+    block: WeaponBlock,
     server_fire_tick: u32,
     flagger_active: bool,
     log_outcome: bool,
@@ -145,6 +175,12 @@ fn accepted_position_weapon_with_logging(
             }),
         },
     );
+    let block_cause = block
+        .cause()
+        .or(sender
+            .objective_weapon_lock_active(server_fire_tick)
+            .then_some("objective_lock"))
+        .or(warp_bomb_lock_active.then_some("warp_bomb_lock"));
     let energy_before_fire = sender.server_energy;
     // A gun sets both reference deadlines to the same tick. The final
     // 100 Hz quantization allowance therefore belongs to the preceding gun,
@@ -205,9 +241,7 @@ fn accepted_position_weapon_with_logging(
             weapon_data: snapshot.weapon,
             server_tick: server_fire_tick,
             in_safe_tile,
-            blocked_by_arena_rule: blocked_by_arena_rule
-                || sender.objective_weapon_lock_active(server_fire_tick)
-                || warp_bomb_lock_active,
+            blocked_by_arena_rule: block_cause.is_some(),
             energy_cost: energy_cost.required,
             fire_delay_ticks,
             cross_fire_delay_ticks,
@@ -232,6 +266,10 @@ fn accepted_position_weapon_with_logging(
         }
     }
     if log_outcome && snapshot.weapon != 0 {
+        sender.session_summary.weapon(
+            outcome.accepted_weapon_data != 0,
+            block.combat_view.is_some(),
+        );
         let accepted_weapon = outcome.accepted_weapon_data;
         let accepted_weapon_type = continuum_weapon_type(accepted_weapon);
         if accepted_weapon != 0 {
@@ -285,7 +323,7 @@ fn accepted_position_weapon_with_logging(
                 fire_delay_ticks,
                 cross_fire_delay_ticks,
                 in_safe_tile,
-                blocked_by_arena_rule,
+                block_cause = block_cause.unwrap_or("none"),
                 reject_reason = outcome
                     .reject_reason
                     .map_or("unknown", |reason| reason.as_str()),

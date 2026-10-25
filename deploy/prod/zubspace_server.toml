@@ -20,24 +20,36 @@ bot_ship_types = "1,4,5,7"
 
 log_level = "info"
 # Prod keeps lifecycle lines (startup, joins, leaves, disconnects), the
-# 10-second connection quality windows and every WARN/ERROR. It drops the
-# per-shot, per-hit, per-damage and per-acknowledgement lines
-# (src/bin/zubspace_server/log_targets.rs); dev logs those at DEBUG.
-log_filter = "zubspace_server::server_tick::combat=warn,zubspace_server::server_damage::combat=warn,zubspace_server::arena::positions::combat=warn,zubspace_server::arena::positions::weapons::combat=warn,zubspace_server::reliable::acks=warn,zubspace_server::rtc::acks=warn"
+# 10-second connection quality windows, each session's summary, every
+# WARN/ERROR and the per-shot, per-hit and per-damage combat lines
+# (src/bin/zubspace_server/log_targets.rs), about 700 a minute per playing
+# human. DEBUG is on for a few low-volume modules: browser experience reports
+# (observability), projectile spawns and snap-back replay detail (positions),
+# deaths with killer and weapon (damage), prize claims, and probe audits
+# (connection_quality). It drops the per-acknowledgement lines and the
+# per-packet connection DEBUG; dev logs everything at DEBUG.
+log_filter = "zubspace_server::observability=debug,zubspace_server::arena::positions=debug,zubspace_server::server_damage=debug,zubspace_server::player_events::prizes=debug,zubspace_server::connection_quality=debug,zubspace_server::reliable::acks=warn,zubspace_server::rtc::acks=warn"
 log_format = "json"
 # stdout, which the journald log driver stores under the host's journal cap.
 log_file = ""
 # Scraped by this environment's Prometheus (deploy/prod/prometheus.yml).
 metrics_listen = "127.0.0.1:9100"
 
-quality_max_rtt_ms = 600
+# Tighter than the built-in 600/400 ms (docs/connection-quality.md): a player
+# whose probe RTT stays at 400 ms for 10 s spectates for a minute and returns
+# below 300 ms. The HUD ping turns yellow at 150 ms and red at 300 ms.
+quality_max_rtt_ms = 400
 quality_max_loss_per_mille = 150
-quality_recovery_rtt_ms = 400
+quality_recovery_rtt_ms = 300
 quality_recovery_loss_per_mille = 100
 
 enable_objectives = false
 sim_observe = false
-observer_network_profile = "clean-lan"
+# Per-connection remote presentation delay (70-200 ms from measured RTT,
+# docs/connection-quality.md). A fixed "clean-lan" 70 ms cannot be served to a
+# player beyond about 130 ms RTT: their combat-view receipts age past the hold
+# grace and the server refuses their shots as unverified.
+observer_network_profile = "auto"
 qa_trace_upload = false
 # No client presentation traces in prod. Browsers still send the 62-byte
 # five-second experience reports that feed zubspace_browser_* metrics.

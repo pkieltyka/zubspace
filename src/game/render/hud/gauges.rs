@@ -11,7 +11,77 @@ pub(super) const REFERENCE_GAME_HEALTHBAR_SOURCE: Rect = Rect {
     h: 28.0,
 };
 
+/// RTT from which the HUD ping turns yellow, and then red, so a player can
+/// see that their connection, not the game, is behind late hits.
+const PING_HIGH_MS: u32 = 150;
+const PING_BAD_MS: u32 = 300;
+
+/// The text colour for a high or bad ping; `None` keeps the ordinary readout.
+pub(super) fn ping_warning_color(ping_ms: u32) -> Option<TextColor> {
+    if ping_ms >= PING_BAD_MS {
+        Some(TextColor::DarkRed)
+    } else if ping_ms >= PING_HIGH_MS {
+        Some(TextColor::Yellow)
+    } else {
+        None
+    }
+}
+
 impl Game {
+    pub(super) fn draw_connection_ping(&self) {
+        if !self.networked_play {
+            return;
+        }
+        let ping = crate::browser_metrics::connection_ping_ms();
+        let suffix = " ms";
+        let right = screen_width() - 4.0;
+        let y = self.assets.energy_font.frame_size.y + 4.0;
+        let suffix_width = self.assets.tall_font.measure_width(suffix);
+        // The energy sprites are blue and do not tint cleanly, so a high
+        // ping is drawn in the HUD text font's own yellow or red.
+        if let Some(color) = ping.and_then(ping_warning_color) {
+            let text = format!("{}{suffix}", ping.unwrap_or_default());
+            self.assets
+                .tall_font
+                .draw_scaled(&text, right, y, color, TextAlign::Right, 1.0);
+            return;
+        }
+        self.assets
+            .tall_font
+            .draw_scaled(suffix, right, y, TextColor::Blue, TextAlign::Right, 1.0);
+        if let Some(ping) = ping {
+            // Half-sized original energy sprites keep the HUD's digit style.
+            let digits = ping.to_string();
+            let size = self.assets.energy_font.frame_size * 0.5;
+            let left = right - suffix_width - digits.len() as f32 * size.x;
+            for (index, digit) in digits.bytes().enumerate() {
+                draw_texture_ex(
+                    &self.assets.energy_font.texture,
+                    left + index as f32 * size.x,
+                    y,
+                    WHITE,
+                    DrawTextureParams {
+                        dest_size: Some(size),
+                        source: Some(
+                            self.assets
+                                .energy_font
+                                .source_for_frame((digit - b'0') as usize),
+                        ),
+                        ..Default::default()
+                    },
+                );
+            }
+        } else {
+            self.assets.tall_font.draw_scaled(
+                "--",
+                right - suffix_width,
+                y,
+                TextColor::Blue,
+                TextAlign::Right,
+                1.0,
+            );
+        }
+    }
     pub(super) fn draw_energy_bar(&self, x: f32, tuning_energy_max: f32) {
         let visible_energy = self.visible_hud_energy();
         let center_x = x + REFERENCE_GAME_HEALTHBAR_WIDTH * 0.5;
@@ -184,5 +254,15 @@ mod tests {
         assert_eq!(energy_digit_count(1700), 4);
         assert_eq!(energy_digits_start_x(1280.0, 16.0, 1700), 1216.0);
         assert_eq!(energy_digits_start_x(360.0, 16.0, 7), 344.0);
+    }
+
+    #[test]
+    fn ping_turns_yellow_at_150_ms_and_red_at_300_ms() {
+        assert_eq!(ping_warning_color(0), None);
+        assert_eq!(ping_warning_color(149), None);
+        assert_eq!(ping_warning_color(150), Some(TextColor::Yellow));
+        assert_eq!(ping_warning_color(299), Some(TextColor::Yellow));
+        assert_eq!(ping_warning_color(300), Some(TextColor::DarkRed));
+        assert_eq!(ping_warning_color(2_000), Some(TextColor::DarkRed));
     }
 }

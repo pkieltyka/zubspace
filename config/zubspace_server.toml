@@ -18,6 +18,7 @@ max_players = 500
 # Full stats, weapons, inventory and allowed capabilities at every spawn.
 # Independent of the arena's InitialBounty (30 in Chaos).
 maxed_spawn_loadout = true
+# At 15 bots, the AI mix is 3 Hard / 5 Medium / 7 Easy; tiers persist across respawns.
 bot_count = 0
 # Ship numbers 1–8, distributed evenly across the total bot_count.
 # Example: bot_count=15, bot_ship_types="1,2,4,5,7" gives three of each.

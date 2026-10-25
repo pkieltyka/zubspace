@@ -94,3 +94,111 @@ test("a template of an unknown version or length is never filled", async () => {
   await f.telemetry.report(wrong);
   assert.equal(f.packets.length, 0);
 });
+
+test("HUD ping samples the selected RTC route once per second and expires stale readings", async () => {
+  let time = 0, visible = true, calls = 0, hang = false;
+  const peer = { connectionState: 'connected', getStats() {
+    calls++;
+    if (hang) return new Promise(() => {});
+    return Promise.resolve(new Map([
+      ['transport', {type:'transport', selectedCandidatePairId:'live'}],
+      ['live', {id:'live', type:'candidate-pair', currentRoundTripTime:0.0436}],
+      ['old', {id:'old', type:'candidate-pair', nominated:true, state:'succeeded', currentRoundTripTime:9}],
+    ]));
+  }};
+  const ping = ZubspacePlayerTelemetry.createPing({now:()=>time, visible:()=>visible, peer:()=>peer});
+  assert.equal(ping(), -1);
+  await new Promise(setImmediate);
+  assert.equal(ping(), 44);
+  for (let i=0;i<100;i++) ping();
+  assert.equal(calls, 1);
+  time=1000; ping(); await new Promise(setImmediate);
+  assert.equal(calls, 2);
+  hang=true; time=2000; ping(); await new Promise(setImmediate);
+  assert.equal(ping(), 44);
+  time=4001; assert.equal(ping(), -1, 'stalled requests cannot leave a stale good reading');
+  peer.connectionState='disconnected'; assert.equal(ping(), -1);
+  visible=false; assert.equal(ping(), -1);
+});
+
+test("HUD ping rejects ambiguous, missing and invalid RTT and isolates getStats failures", async () => {
+  for(const rows of [[],
+    [{type:'candidate-pair', nominated:true,state:'succeeded',currentRoundTripTime:0.01},
+     {type:'candidate-pair', nominated:true,state:'succeeded',currentRoundTripTime:0.02}],
+    ...[undefined,NaN,-1,Infinity,11].map(currentRoundTripTime=>[
+      {type:'candidate-pair',nominated:true,state:'succeeded',currentRoundTripTime}]),
+  ]) {
+    const peer={connectionState:'connected',getStats:async()=>new Map(rows.map((row,i)=>[i,row]))};
+    const ping=ZubspacePlayerTelemetry.createPing({now:()=>0,visible:()=>true,peer:()=>peer});
+    ping(); await new Promise(setImmediate); assert.equal(ping(),-1);
+  }
+  const peer={connectionState:'connected',getStats(){throw Error('stats unavailable');}};
+  const ping=ZubspacePlayerTelemetry.createPing({now:()=>0,visible:()=>true,peer:()=>peer});
+  assert.equal(ping(),-1); await new Promise(setImmediate); assert.equal(ping(),-1);
+});
+
+test("HUD ping discards a sample from a replaced RTC connection", async () => {
+  let resolve;
+  let current={connectionState:'connected',getStats:()=>new Promise(r=>{resolve=r;})};
+  const ping=ZubspacePlayerTelemetry.createPing({now:()=>0,visible:()=>true,peer:()=>current});
+  ping(); await new Promise(setImmediate);
+  current={connectionState:'connected',getStats:async()=>new Map()};
+  resolve(new Map([['pair',{type:'candidate-pair',nominated:true,state:'succeeded',currentRoundTripTime:0.05}]]));
+  await new Promise(setImmediate);
+  assert.equal(ping(),-1);
+});
+
+test("local ping commands get bounded rolling RTT statistics from the HUD sampler", async () => {
+  let time=0, seconds=0.04;
+  const peer={connectionState:'connected',getStats:async()=>new Map([
+    ['pair',{type:'candidate-pair',nominated:true,state:'succeeded',currentRoundTripTime:seconds}],
+  ])};
+  const ping=ZubspacePlayerTelemetry.createPing({now:()=>time,visible:()=>true,peer:()=>peer});
+  assert.equal(ping.stats(),null);
+  await new Promise(setImmediate);
+  assert.deepEqual(ping.stats(),[40,40,40,40,0]);
+  time+=1000;seconds=0.06;ping();await new Promise(setImmediate);
+  assert.deepEqual(ping.stats(),[60,50,40,60,20]);
+  for(let i=0;i<60;i++){time+=1000;seconds=0.05;ping();await new Promise(setImmediate);}
+  assert.deepEqual(ping.stats(),[50,50,50,50,0],'history retains at most sixty samples');
+  peer.connectionState='disconnected';assert.equal(ping.stats(),null);
+});
+
+test("a hung old peer cannot block ping sampling after reconnect", async () => {
+  let current={connectionState:'connected',getStats:()=>new Promise(()=>{})};
+  const ping=ZubspacePlayerTelemetry.createPing({now:()=>0,visible:()=>true,peer:()=>current});
+  ping(); await new Promise(setImmediate);
+  current={connectionState:'connected',getStats:async()=>new Map([
+    ['pair',{type:'candidate-pair',nominated:true,state:'succeeded',currentRoundTripTime:0.033}],
+  ])};
+  assert.equal(ping(),-1);await new Promise(setImmediate);
+  assert.equal(ping(),33);
+});
+
+test("a stats result delayed by a page pause cannot resurrect stale ping", async () => {
+  let time=0, resolve;
+  const peer={connectionState:'connected',getStats:()=>new Promise(r=>{resolve=r;})};
+  const ping=ZubspacePlayerTelemetry.createPing({now:()=>time,visible:()=>true,peer:()=>peer});
+  ping(); await new Promise(setImmediate);
+  time=5000;
+  resolve(new Map([['pair',{type:'candidate-pair',nominated:true,state:'succeeded',currentRoundTripTime:0.01}]]));
+  await new Promise(setImmediate);
+  assert.equal(ping(),-1);
+  assert.equal(ping.stats(),null);
+});
+
+test("page visibility notices carry the published scope in the server's 0x85 framing", () => {
+  const scope = new Uint8Array(16);
+  const view = new DataView(scope.buffer);
+  view.setBigUint64(0, 0x0102030405060708n, true);
+  view.setBigUint64(8, 7n, true);
+  const hidden = ZubspacePlayerTelemetry.visibilityNotice(scope, true);
+  assert.deepEqual([...hidden], [0x85, 1, 8, 7, 6, 5, 4, 3, 2, 1, 7, 0, 0, 0, 0, 0, 0, 0, 1]);
+  assert.equal(ZubspacePlayerTelemetry.visibilityNotice(scope, false)[18], 0);
+  // No scope yet, or half of one, sends nothing rather than an unscoped notice.
+  assert.equal(ZubspacePlayerTelemetry.visibilityNotice(null, true), null);
+  assert.equal(ZubspacePlayerTelemetry.visibilityNotice(new Uint8Array(16), true), null);
+  assert.equal(ZubspacePlayerTelemetry.visibilityNotice(scope.slice(0, 15), true), null);
+  const noStream = scope.slice(); noStream.fill(0, 8);
+  assert.equal(ZubspacePlayerTelemetry.visibilityNotice(noStream, true), null);
+});

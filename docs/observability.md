@@ -58,10 +58,13 @@ emits it ([`log_targets.rs`](../src/bin/zubspace_server/log_targets.rs)):
 - `zubspace_server::reliable::acks`
 - `zubspace_server::rtc::acks`
 
-A filter on the parent module still matches them. Prod sets exactly these to
-`warn`, keeping startup, joins, leaves, disconnects, connection-quality windows
-and every warning and error; dev logs everything at DEBUG. A server test reads
-both deployed configs to keep this split.
+A filter on the parent module still matches them. Prod logs the combat targets
+at INFO and sets the two acknowledgement targets to `warn`. It also enables
+DEBUG for a few low-volume modules: `observability` (browser experience
+reports), `arena::positions` (projectile spawns and snap-back replay detail),
+`server_damage` (deaths with killer and weapon), `player_events::prizes` and
+`connection_quality` (probe audits). Dev logs everything at DEBUG. A server
+test reads both deployed configs to keep this split.
 
 ### Notable events
 
@@ -73,7 +76,10 @@ Entries containing a space are log messages; the others are values of the
 | `server_tick_health` | INFO | Every 600 ticks (10 s at 60 Hz): session count, tick work and interval jitter averages, overrun and snapback counts |
 | `server_tick_overrun_phases` | WARN | A tick over its budget, split into admission, bots, world and publication, snapshots and finish time; at most one per second |
 | `server connection quality window` | INFO | Per session: probe samples, average RTT and round-trip probe loss (see [connection quality](connection-quality.md)) |
-| `player_experience_window` | DEBUG | Each accepted browser report |
+| `player_experience_window` | DEBUG | Each accepted browser report; prod enables this one target in `log_filter` |
+| `session_summary` | INFO | Per session at removal: duration, ship, kills and deaths, browser frame rate, slow and worst frames, corrections, ICE and probe RTT, probes and echoes, snap-backs, rejected positions, weapons fired and rejected, and how often the page was hidden (`page_hidden_periods`) |
+| `page visibility changed` | INFO | The page hid or showed, pausing or resuming connection-quality measurement (see [connection quality](connection-quality.md#measurement-window)) |
+| `server weapon rejected` | INFO | A refused weapon request; `block_cause` names a block that applied before the fire rules (`bomb_safety`, `mine_limit`, `objective_ball`, `objective_lock`, `warp_bomb_lock`, or, when the shot had no verified combat view, the input's frozen `combat_view_*` receipt rejection such as `combat_view_application_too_far_behind`, else a `projectile_timeline_*` reason), else `none` |
 | `canonical_mismatch_detail` | WARN | Detail on a rejected movement replay, at most one per life per ten seconds |
 | `server zone_file_manifest_resolved` | INFO | Per join: zone files held and sent, bytes and elapsed time (see [zone file cache](zone-file-cache.md)) |
 | `client_debug_window` | INFO | Each accepted client presentation upload |

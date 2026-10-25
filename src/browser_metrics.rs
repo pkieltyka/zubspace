@@ -145,6 +145,29 @@ pub(crate) fn publish_player_frame(corrections: u32, ready: bool) {
     }
 }
 
+/// The page sends its own visibility notices (`0x85`) when it hides or shows,
+/// because no frame runs while it is hidden. It needs the current scope;
+/// zeros clear it. Published only when it changes.
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn publish_connection_scope(server_session_id: u64, arena_stream_id: u64) {
+    thread_local! {
+        static PUBLISHED: std::cell::Cell<(u64, u64)> = const { std::cell::Cell::new((0, 0)) };
+    }
+    let scope = (server_session_id, arena_stream_id);
+    if PUBLISHED.with(|published| published.replace(scope)) == scope {
+        return;
+    }
+    unsafe extern "C" {
+        fn zub_connection_scope(ptr: *const u8, len: usize);
+    }
+    let mut bytes = [0_u8; 16];
+    bytes[..8].copy_from_slice(&server_session_id.to_le_bytes());
+    bytes[8..].copy_from_slice(&arena_stream_id.to_le_bytes());
+    unsafe {
+        zub_connection_scope(bytes.as_ptr(), bytes.len());
+    }
+}
+
 #[cfg(target_arch = "wasm32")]
 pub(crate) fn publish_player_report(server_session_id: u64, arena_stream_id: u64, life_seq: u32) {
     unsafe extern "C" {
@@ -197,4 +220,32 @@ pub(crate) fn frequency_changes_allowed() -> bool {
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn frequency_changes_allowed() -> bool {
     false
+}
+
+/// Selected WebRTC route RTT; no fabricated zero while disconnected/unmeasured.
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn connection_ping_ms() -> Option<u32> {
+    unsafe extern "C" {
+        fn zub_connection_ping_ms() -> i32;
+    }
+    u32::try_from(unsafe { zub_connection_ping_ms() }).ok()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn connection_ping_ms() -> Option<u32> {
+    None
+}
+
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn connection_ping_stats() -> Option<[u32; 5]> {
+    unsafe extern "C" {
+        fn zub_connection_ping_stats(out: *mut u32) -> i32;
+    }
+    let mut stats = [0; 5];
+    (unsafe { zub_connection_ping_stats(stats.as_mut_ptr()) } == 1).then_some(stats)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn connection_ping_stats() -> Option<[u32; 5]> {
+    None
 }

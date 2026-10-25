@@ -101,7 +101,7 @@ function joinFormFixture({name='Ace',mobile=false,dialog=false,stored=null,admis
   const form={classList:{add:x=>classes.add(x),contains:x=>classes.has(x),remove:x=>classes.delete(x)},
     addEventListener:(key,fn)=>{listeners[key]=fn;},removeEventListener:key=>{delete listeners[key];}};
   const button={},text={dataset:{}};
-  const window={zubspaceMenu:{mobile,active:true},
+  const window={zubspaceMenu:{mobile,active:true,welcomeControls:async()=>true},
     zubspaceMenuAdmission:{message:admission.message,recoverStoredIdentity:admission.recoverStoredIdentity,check:(_url,name)=>{checkedNames.push(name);calls.push('check');return new Promise(r=>{checkResolve=r;});}},
     addEventListener:(key,fn)=>{listeners[key]=fn;},removeEventListener:key=>{delete listeners[key];},
     location:{href:'http://127.0.0.1:7000/'},history:{replaceState(){}}};
@@ -132,7 +132,7 @@ test('name form prompts only empty names automatically, while explicit admission
     assert.deepEqual(joinFormFixture({name,mobile:true,admissionError:1}).inputActions,[]);
   }
   const returning=joinFormFixture();
-  const pending=returning.submit(); returning.finish(1); await pending;
+  const pending=returning.submit(); await new Promise(setImmediate); returning.finish(1); await pending;
   assert.deepEqual(returning.inputActions,['focus','select']);
 });
 
@@ -144,12 +144,12 @@ test('actual name form trims edges on submission without silently rewriting inva
     await f.submit(); assert.deepEqual(f.calls,[]);
     f.input.value='\u200b\t Ace!* \u00a0'; f.inputListeners.input({type:'input'});
     assert.equal(f.button.disabled,false);
-    const pending=f.submit();assert.equal(f.input.value,'Ace!*'); assert.deepEqual(f.checkedNames,['Ace!*']);
+    const pending=f.submit(); await new Promise(setImmediate); assert.equal(f.input.value,'Ace!*'); assert.deepEqual(f.checkedNames,['Ace!*']);
     f.finish(null); await pending; assert.equal((await f.identity).name,'Ace!*');
   }
   const name=' '.repeat(50)+'ABCDEFGHIJKL!*'+' '.repeat(50);
   const f=joinFormFixture({name}); assert.equal(f.button.disabled,false);
-  const pending=f.submit(); f.finish(null); await pending;
+  const pending=f.submit(); await new Promise(setImmediate); f.finish(null); await pending;
   assert.equal((await f.identity).name,'ABCDEFGHIJKL!*');
   assert.match(entryHtml, /id="player-name-input"[^>]*maxlength="128"/);
 });
@@ -172,7 +172,7 @@ test('legacy invalid names return an editable form and valid stored/URL names re
   }
 });
 test('actual join form checks metadata and ignores duplicate submissions without an entry cue', async()=>{
-  const f=joinFormFixture(); const pending=f.submit(); assert.deepEqual(f.calls,['check']);
+  const f=joinFormFixture(); const pending=f.submit(); await new Promise(setImmediate); assert.deepEqual(f.calls,['check']);
   await f.submit(); assert.deepEqual(f.calls,['check']);
   f.finish(null); await pending; assert.equal((await f.identity).name,'Ace'); assert.deepEqual(f.calls,['check','join']);
 });
@@ -180,9 +180,9 @@ test('invalid names, mobile and modal interactions remain blocked; rejection ret
   for(const options of [{name:''},{mobile:true},{dialog:true}]) {
     const f=joinFormFixture(options); await f.submit(); assert.deepEqual(f.calls,[]);
   }
-  const f=joinFormFixture(); const first=f.submit(); f.finish(1); await first;
+  const f=joinFormFixture(); const first=f.submit(); await new Promise(setImmediate); f.finish(1); await first;
   assert.deepEqual(f.calls,['check']); assert(f.form.classList.contains('visible'));
-  const second=f.submit(); f.finish(null); await second; await f.identity;
+  const second=f.submit(); await new Promise(setImmediate); f.finish(null); await second; await f.identity;
   assert.deepEqual(f.calls,['check','check','join']);
 });
 
@@ -199,7 +199,7 @@ test('an advisory name collision can reach authoritative recovery only for the s
     [1,{name:'Other',playerId:'123'},'Ace','123'],[2,{name:'Ace',playerId:'123'},'Ace','123'],
   ]) assert.equal(admission.recoverStoredIdentity(code, stored, name, id), false);
   const fixture=joinFormFixture({stored:{name:'Ace',playerId:'123'}});
-  const pending=fixture.submit();fixture.finish(1);await pending;
+  const pending=fixture.submit(); await new Promise(setImmediate); fixture.finish(1);await pending;
   assert.equal((await fixture.identity).playerId,'123');
   assert.deepEqual(fixture.calls,['check','join']);
 });

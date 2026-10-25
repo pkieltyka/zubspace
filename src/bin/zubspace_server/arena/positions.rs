@@ -52,8 +52,9 @@ mod weapons;
 
 pub(crate) use batching::send_position_relays_batched;
 use weapons::{
-    accepted_position_weapon, mine_blocked_by_mine_limits, preview_accepted_position_weapon,
-    preview_position_weapon, proximity_bomb_blocked_by_bomb_safety,
+    WeaponBlock, accepted_position_weapon, mine_blocked_by_mine_limits,
+    preview_accepted_position_weapon, preview_position_weapon,
+    proximity_bomb_blocked_by_bomb_safety,
 };
 
 const POSITION_RELAY_RATE_WINDOW: Duration = Duration::from_millis(50);
@@ -858,6 +859,9 @@ pub(crate) fn apply_movement_correction_application_at_tick(
         state.movement_snapbacks_total = state.movement_snapbacks_total.saturating_add(1);
         state.movement_snapbacks_since_summary =
             state.movement_snapbacks_since_summary.saturating_add(1);
+        if let Some(client) = state.clients.get_mut(&player_id) {
+            client.session_summary.snapbacks += 1;
+        }
         tracing::warn!(
             player_id,
             life_seq = identity.life.life_seq,
@@ -1258,6 +1262,7 @@ fn accept_position_relay_with_spawn_deferral(
         if !current_sender.joined || current_sender.player.ship >= 8 {
             return None;
         }
+        let mut combat_view_rejection = None;
         let projectile_combat_timeline = if snapshot.weapon != 0 {
             match bind_human_projectile_timeline(
                 state,
@@ -1274,6 +1279,12 @@ fn accept_position_relay_with_spawn_deferral(
                         reason = rejection.reason(),
                         "weapon edge has no admissible server combat-view binding"
                     );
+                    combat_view_rejection = Some(combat_view_block_cause(
+                        state,
+                        player_id,
+                        client_sequence,
+                        rejection,
+                    ));
                     None
                 }
             }
@@ -1288,6 +1299,12 @@ fn accept_position_relay_with_spawn_deferral(
             client_sequence,
             snapshot.weapon,
         );
+        let weapon_block = WeaponBlock {
+            bomb_safety: bomb_safety_blocked,
+            mine_limit: mine_limit_blocked,
+            objective_ball: objective_weapon_blocked,
+            combat_view: combat_view_rejection,
+        };
         let respawn_transition = !current_sender.alive;
         if respawn_transition && (canonical_input.bits != 0 || canonical_input.direction != 0) {
             debug!(
@@ -1539,7 +1556,7 @@ fn accept_position_relay_with_spawn_deferral(
             log_security_reject(player_id, "position", "impossible_velocity");
             return None;
         }
-        let movement_upgrades = crate::sim_observation::movement_upgrades_for_client(sender);
+        let mut movement_upgrades = crate::sim_observation::movement_upgrades_for_client(sender);
         let existing_repel_active = sender.server_repel_until_tick.is_some_and(|until| {
             !crate::continuum::continuum_tick_reached(server_tick_at_accept, until)
         });
@@ -1552,10 +1569,7 @@ fn accept_position_relay_with_spawn_deferral(
                 sender,
                 snapshot,
                 in_safe_tile,
-                bomb_safety_blocked
-                    || mine_limit_blocked
-                    || objective_weapon_blocked
-                    || combat_view_weapon_blocked,
+                weapon_block,
                 server_tick_at_accept,
                 is_flagger,
             );
@@ -1565,14 +1579,14 @@ fn accept_position_relay_with_spawn_deferral(
         };
         let tail_bomb_recoil_speed = accepted_position_weapon_applies_recoil(previewed_weapon)
             .then(|| arena_ship_bomb_recoil_speed(sender.player.ship));
-        let canonical_replay =
+        let replay_with = |upgrades| {
             crate::sim_observation::replay_canonical_position_gap_with_repel_application(
                 sender,
                 map,
                 is_flagger,
                 attached_riders,
                 existing_repel_active,
-                movement_upgrades,
+                upgrades,
                 &enemy_brick_tiles,
                 client_sequence,
                 server_tick_at_accept,
@@ -1580,7 +1594,46 @@ fn accept_position_relay_with_spawn_deferral(
                 spawn_y,
                 tail_bomb_recoil_speed,
                 repel_application,
+            )
+        };
+        let replay_matches = |replay: &crate::sim_observation::CanonicalPositionReplay| {
+            let report = (
+                snapshot.canonical_state,
+                canonical_direction,
+                snapshot.x,
+                snapshot.y,
+                snapshot.velocity_x,
+                snapshot.velocity_y,
             );
+            !replay
+                .matching_exact_branch_witnesses(
+                    report.0, report.1, report.2, report.3, report.4, report.5,
+                )
+                .is_empty()
+                || replay
+                    .matching_exact_relocated_branch_witnesses(
+                        report.0, report.1, report.2, report.3, report.4, report.5,
+                    )
+                    .is_some()
+                || replay
+                    .matching_exact_wormhole_branch_witnesses(
+                        report.0, report.1, report.2, report.3, report.4, report.5,
+                    )
+                    .is_some()
+        };
+        let mut canonical_replay = replay_with(movement_upgrades);
+        // Input generated before the browser learned of a damage prize change
+        // replays with the replaced tuning (`DamageMovementGrace`).
+        if !canonical_replay.as_ref().is_some_and(replay_matches)
+            && let Some(tuning) = sender.damage_movement_grace_tuning(client_sequence)
+        {
+            let grace_upgrades = crate::sim_observation::movement_upgrades_from_tuning(tuning);
+            let grace_replay = replay_with(grace_upgrades);
+            if grace_replay.as_ref().is_some_and(replay_matches) {
+                canonical_replay = grace_replay;
+                movement_upgrades = grace_upgrades;
+            }
+        }
         // Safe-zone weapon presses emit no live weapon. Their exact logical
         // record now carries a dedicated post-step stop bit, so gap replay can
         // reproduce the action even when that intermediate position is lost.
@@ -2123,6 +2176,12 @@ fn accept_position_relay_with_spawn_deferral(
                     "first differing field in the rejected canonical tail; origin remains unclassified"
                 );
             }
+            // Count on the live handle; the staged sender is discarded.
+            if let Some(current) = state.clients.get_mut(&player_id)
+                && current.session_id == sender.session_id
+            {
+                current.session_summary.position_rejects += 1;
+            }
             log_security_reject(player_id, "position", "canonical_state_mismatch");
             return None;
         }
@@ -2237,7 +2296,16 @@ fn accept_position_relay_with_spawn_deferral(
         // From this point onward the position cannot be rejected by movement,
         // hull, path, or witness admission. Consume discontinuity authority
         // transactionally now; prospective replay above remained read-only.
+        if client_position_sequence_advances(sender.last_position_sequence, client_sequence) {
+            sender.keep_weapon_window_near(client_sequence);
+        }
         if snapshot.weapon != 0 && sender.weapon_sequence_seen(client_sequence) {
+            debug!(
+                player_id,
+                client_sequence,
+                latest_weapon_sequence = ?sender.latest_weapon_seq,
+                "dropping position whose weapon sequence was already seen"
+            );
             return None;
         }
         if matching_warp_prize_discontinuity {
@@ -2390,10 +2458,7 @@ fn accept_position_relay_with_spawn_deferral(
             sender,
             snapshot,
             in_safe_tile,
-            bomb_safety_blocked
-                || mine_limit_blocked
-                || objective_weapon_blocked
-                || combat_view_weapon_blocked,
+            weapon_block,
             server_tick_at_accept,
             is_flagger,
         );
@@ -3936,15 +4001,17 @@ fn consume_stale_weapon_mirror(
     canonical_snapshot.direction = witness.direction;
     let in_safe_tile =
         world_position_in_safe_tile_for_map(map, canonical_snapshot.x, canonical_snapshot.y);
-    let blocked_by_arena_rule =
-        proximity_bomb_blocked_by_bomb_safety(state, player_id, canonical_snapshot)
-            || mine_blocked_by_mine_limits(state, player_id, canonical_snapshot);
-    let objective_weapon_blocked = objective_weapon_substitutes_ball_fire(
-        state,
-        player_id,
-        client_sequence,
-        canonical_snapshot.weapon,
-    );
+    let mut weapon_block = WeaponBlock {
+        bomb_safety: proximity_bomb_blocked_by_bomb_safety(state, player_id, canonical_snapshot),
+        mine_limit: mine_blocked_by_mine_limits(state, player_id, canonical_snapshot),
+        objective_ball: objective_weapon_substitutes_ball_fire(
+            state,
+            player_id,
+            client_sequence,
+            canonical_snapshot.weapon,
+        ),
+        combat_view: None,
+    };
     let projectile_combat_timeline = match bind_human_projectile_timeline(
         state,
         player_id,
@@ -3960,17 +4027,22 @@ fn consume_stale_weapon_mirror(
                 reason = rejection.reason(),
                 "mirrored weapon edge has no admissible server combat-view binding"
             );
+            weapon_block.combat_view = Some(combat_view_block_cause(
+                state,
+                player_id,
+                client_sequence,
+                rejection,
+            ));
             None
         }
     };
-    let combat_view_weapon_blocked = projectile_combat_timeline.is_none();
     let is_flagger = player_flagger_active(state, player_id);
     let previewed_weapon = state.clients.get(&player_id).map_or(0, |sender| {
         preview_accepted_position_weapon(
             sender,
             canonical_snapshot,
             in_safe_tile,
-            blocked_by_arena_rule || objective_weapon_blocked || combat_view_weapon_blocked,
+            weapon_block,
             server_tick_at_accept,
             is_flagger,
         )
@@ -4028,7 +4100,7 @@ fn consume_stale_weapon_mirror(
             sender,
             canonical_snapshot,
             in_safe_tile,
-            blocked_by_arena_rule || objective_weapon_blocked || combat_view_weapon_blocked,
+            weapon_block,
             server_tick_at_accept,
             is_flagger,
         );
@@ -4069,6 +4141,29 @@ fn consume_stale_weapon_mirror(
         );
     }
     true
+}
+
+/// The most specific reason a weapon has no verified combat view. An
+/// unverified input names its frozen receipt rejection (for example
+/// `combat_view_application_too_far_behind`) when the server recorded one.
+pub(crate) fn combat_view_block_cause(
+    state: &ServerState,
+    player_id: u16,
+    input_sequence: u16,
+    rejection: crate::combat_timeline::ProjectileTimelineBindingRejection,
+) -> &'static str {
+    if rejection != crate::combat_timeline::ProjectileTimelineBindingRejection::UnverifiedInput {
+        return rejection.reason();
+    }
+    state
+        .clients
+        .get(&player_id)
+        .and_then(|client| {
+            client
+                .observer_combat_timeline
+                .receipt_rejection_for_sequence(input_sequence)
+        })
+        .map_or(rejection.reason(), |receipt| receipt.reason())
 }
 
 fn bind_human_projectile_timeline(
@@ -4187,7 +4282,7 @@ pub(crate) fn preview_and_commit_position_weapon_with_ball_policy_for_test(
         state.clients.get(&player_id)?,
         snapshot,
         false,
-        blocked,
+        WeaponBlock::objective_ball(blocked),
         server_fire_tick,
         flagger_active,
     );
@@ -4195,7 +4290,7 @@ pub(crate) fn preview_and_commit_position_weapon_with_ball_policy_for_test(
         state.clients.get_mut(&player_id)?,
         snapshot,
         false,
-        blocked,
+        WeaponBlock::objective_ball(blocked),
         server_fire_tick,
         flagger_active,
     );
@@ -4231,7 +4326,7 @@ pub(crate) fn preview_and_commit_position_weapon_for_test(
         state.clients.get(&player_id)?,
         snapshot,
         objective_weapon_blocked,
-        objective_weapon_blocked,
+        WeaponBlock::objective_ball(objective_weapon_blocked),
         server_fire_tick,
         flagger_active,
     );
@@ -4239,7 +4334,7 @@ pub(crate) fn preview_and_commit_position_weapon_for_test(
         state.clients.get_mut(&player_id)?,
         snapshot,
         false,
-        false,
+        WeaponBlock::default(),
         server_fire_tick,
         flagger_active,
     );
@@ -4842,6 +4937,7 @@ mod tests {
             snapshot_holds: Default::default(),
             maxed_spawn_loadout: false, // This fixture tests the authored base movement model.
             spawn_idle: Default::default(),
+            session_summary: Default::default(),
             session_id: PlayerSessionId::new(1),
             arena_stream_id: 1,
             inputs_received: 0,
@@ -4891,6 +4987,7 @@ mod tests {
             server_engine_shutdown_start_sequence: None,
             server_engine_shutdown_until_tick: None,
             pending_prize_effect_applications: std::collections::VecDeque::new(),
+            damage_movement_grace: None,
             prize_effect_application_terminals: std::collections::VecDeque::new(),
             server_emp_start_sequence: None,
             server_emp_until_tick: None,
@@ -5032,6 +5129,79 @@ mod tests {
             repel_delivery_generation: repel_snapshot_id.map(|_| 1),
             warp_collectible_id: None,
         }
+    }
+
+    // Prod: a pilot fired at sequence 4440, sat in a safe zone for 9.5
+    // minutes and then bombed at 38285, 33845 sequences later. Past the u16
+    // half range the bomb compared as an ancient replay, the server dropped
+    // its position and the client's recoil forced repeated snap-backs.
+    #[test]
+    fn weapon_after_a_long_ceasefire_is_fresh_while_old_weapons_stay_seen() {
+        let last_shot = 4_440_u16;
+        let bomb = 38_285_u16;
+
+        let mut stale = test_client_handle();
+        stale.remember_weapon_sequence(last_shot);
+        assert!(
+            stale.weapon_sequence_seen(bomb),
+            "without the window following positions the bomb reads as a replay"
+        );
+
+        let mut client = test_client_handle();
+        client.remember_weapon_sequence(last_shot);
+        let mut sequence = last_shot;
+        while sequence != bomb.wrapping_sub(1) {
+            sequence = sequence.wrapping_add(1);
+            client.keep_weapon_window_near(sequence);
+        }
+        client.keep_weapon_window_near(bomb);
+        assert!(!client.weapon_sequence_seen(bomb));
+        assert!(
+            client.weapon_sequence_seen(last_shot),
+            "consumed weapons stay seen"
+        );
+        client.remember_weapon_sequence(bomb);
+        assert!(
+            client.weapon_sequence_seen(bomb),
+            "the bomb is consumed once"
+        );
+
+        // Through a full u16 epoch and beyond, a held trigger never ages a
+        // fresh shot into a replay.
+        let mut client = test_client_handle();
+        client.remember_weapon_sequence(0);
+        for step in 1..=200_000_u32 {
+            let sequence = step as u16;
+            client.keep_weapon_window_near(sequence);
+            if step % 997 == 0 {
+                assert!(!client.weapon_sequence_seen(sequence.wrapping_add(1)));
+            }
+        }
+    }
+
+    #[test]
+    fn keeping_the_weapon_window_near_positions_preserves_recent_consumption() {
+        let mut client = test_client_handle();
+        client.remember_weapon_sequence(100);
+        client.remember_weapon_sequence(98);
+        // Within the allowed lag nothing moves.
+        client.keep_weapon_window_near(100 + 0x4000);
+        assert_eq!(client.latest_weapon_seq, Some(100));
+        assert!(client.weapon_sequence_seen(98));
+        assert!(
+            !client.weapon_sequence_seen(99),
+            "an unconsumed recent mirror stays usable"
+        );
+        // A small slide keeps the consumed bits at their sequences.
+        client.keep_weapon_window_near(100 + 0x4000 + 3);
+        assert_eq!(client.latest_weapon_seq, Some(103));
+        assert!(client.weapon_sequence_seen(100));
+        assert!(client.weapon_sequence_seen(98));
+        assert!(!client.weapon_sequence_seen(101));
+        // A sequence behind the window (a reordered or forged old report)
+        // never pulls it backwards.
+        client.keep_weapon_window_near(50);
+        assert_eq!(client.latest_weapon_seq, Some(103));
     }
 
     #[test]

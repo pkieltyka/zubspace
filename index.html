@@ -123,7 +123,7 @@
         <div id="loading-progress-text">Preparing flight…</div>
       </main>
       <footer class="menu-bottom">
-        <button id="controls-open" class="menu-controls" type="button" aria-label="Learn keyboard controls" aria-haspopup="dialog" aria-controls="controls-dialog" title="Keyboard controls"><span class="controls-launch-icon"><svg viewBox="0 0 24 18" width="22" height="17" fill="none" stroke="currentColor" aria-hidden="true"><rect x="1" y="1" width="22" height="16" rx="2"/><path d="M4 5h2m2 0h2m2 0h2m2 0h2M4 9h2m2 0h2m2 0h2m2 0h2M6 13h12"/></svg></span><span class="menu-controls-text"><span><kbd>ARROWS</kbd> to fly</span> <span><span class="controls-separator" aria-hidden="true">·</span> <kbd>X</kbd> or <kbd>CTRL</kbd> for bullets</span> <span><span class="controls-separator" aria-hidden="true">·</span> <kbd>Z</kbd> or <kbd>TAB</kbd> for bombs</span></span></button>
+        <button id="controls-open" class="menu-controls" type="button" aria-label="Learn keyboard controls" aria-haspopup="dialog" aria-controls="controls-dialog" title="Keyboard controls"><span class="controls-launch-icon"><svg viewBox="0 0 24 18" width="22" height="17" fill="none" stroke="currentColor" aria-hidden="true"><rect x="1" y="1" width="22" height="16" rx="2"/><path d="M4 5h2m2 0h2m2 0h2m2 0h2M4 9h2m2 0h2m2 0h2m2 0h2M6 13h12"/></svg></span><span class="menu-controls-text"><span><kbd>WASD</kbd> to fly</span> <span><span class="controls-separator" aria-hidden="true">·</span> <kbd>,</kbd> for bullets</span> <span><span class="controls-separator" aria-hidden="true">·</span> <kbd>.</kbd> for bombs</span></span></button>
         <div class="menu-meta"><span class="menu-secondary" id="menu-build">Development build</span><span aria-hidden="true">·</span><button id="credits-open" type="button" aria-haspopup="dialog" aria-controls="credits-dialog">Credits</button><span aria-hidden="true">·</span><a href="https://github.com/pkieltyka/zubspace" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span></a></div>
       </footer>
       <dialog id="credits-dialog" aria-labelledby="credits-title">
@@ -131,10 +131,10 @@
         <section class="credits-section"><h3>To the original creators</h3><p>Inspired by the original <strong><a href="https://en.wikipedia.org/wiki/SubSpace_(video_game)" target="_blank" rel="noopener noreferrer">Subspace</a></strong> and <strong><a href="https://store.steampowered.com/app/352700/Subspace_Continuum/" target="_blank" rel="noopener noreferrer">Subspace Continuum</a></strong> — a favorite from the dial-up days.</p><p>Thank you to the original creators and the community who kept this classic space battler flying.</p></section>
         <section class="credits-section"><h3>Keep it flying</h3><p>zubspace is a community-minded remake for the browser. Pull requests, contributions, and mods are welcome. Built entirely with AI.</p><a class="credits-source" href="https://github.com/pkieltyka/zubspace" target="_blank" rel="noopener noreferrer">Explore the source on GitHub <span aria-hidden="true">↗</span></a></section>
       </dialog>
-      <dialog id="controls-dialog" data-layout="all" aria-labelledby="controls-title" aria-describedby="controls-description">
-        <header class="controls-header"><div><p class="controls-eyebrow">ZUBSPACE / PILOT REFERENCE</p><h2 id="controls-title">Flight keyboard controls</h2></div><button id="controls-close" type="button" aria-label="Close keyboard controls" autofocus>[ X ]</button></header>
-        <p id="controls-description">Your flight deck. Two layouts work at the same time: the arrow keys with X or CTRL for bullets, Z or TAB for bombs and Q to repel, or WASD with , . and /. The highlighted keys are all you need to get started.</p>
-        <div class="controls-layouts" role="group" aria-label="Keyboard layout"><button type="button" aria-pressed="true" aria-controls="controls-keyboard" data-layout-option="all">Both layouts</button><button type="button" aria-pressed="false" aria-controls="controls-keyboard" data-layout-option="1">Classic layout · Arrows + Z X Ctrl</button><button type="button" aria-pressed="false" aria-controls="controls-keyboard" data-layout-option="2">Modern layout · WASD + , . /</button></div>
+      <dialog id="controls-dialog" data-layout="2" aria-labelledby="controls-title" aria-describedby="controls-description">
+        <header class="controls-header"><div><p class="controls-eyebrow">ZUBSPACE / PILOT REFERENCE</p><h2 id="controls-title" tabindex="-1">Flight keyboard controls</h2></div><button id="controls-close" type="button" aria-label="Close keyboard controls" autofocus>[ X ]</button></header>
+        <p id="controls-description">Your flight deck. We support Classic and Modern layouts, and both work at the same time: the arrow keys with X or CTRL for bullets, Z or TAB for bombs and Q to repel, or WASD with , . and /. The highlighted keys are all you need to get started.</p>
+        <div class="controls-layouts" role="group" aria-label="Keyboard layout"><button type="button" aria-pressed="false" aria-controls="controls-keyboard" data-layout-option="all">Both layouts</button><button type="button" aria-pressed="false" aria-controls="controls-keyboard" data-layout-option="1">Classic layout · Arrows + Z X Ctrl</button><button type="button" aria-pressed="true" aria-controls="controls-keyboard" data-layout-option="2">Modern layout · WASD + , . /</button></div>
         <p class="keyboard-scroll-hint">Swipe the keyboard to explore all controls →</p>
         <div id="controls-keyboard" class="keyboard-scroll" tabindex="0" role="region" aria-label="Keyboard diagram, scroll horizontally on small screens">
           <div class="flight-keyboard"><div class="main-keyboard">
@@ -150,6 +150,7 @@
         <div class="controls-notes"><p><kbd>SHIFT + ↑ / ↓ or W / S</kbd> Afterburner</p><p><kbd>SHIFT + CTRL</kbd> Repel (or Q)</p><p><kbd>SHIFT + X or ,</kbd> Fire while afterburning</p><p><kbd>SHIFT + TAB, Z or .</kbd> Lay a mine (or M)</p><p><kbd>0</kbd> Place / use portal</p><p><kbd>SHIFT + 0</kbd> Random warp</p></div>
         <p class="controls-footnote">ENTER opens chat. ESC opens the game menu. Special abilities require the matching equipment.</p>
         <p class="controls-footnote">Hold SPACE: player list · UP / DOWN scroll · release to resume.<br />Spectator: ARROWS or WASD pan · CTRL, X or , next player · TAB, Z or . previous player · ESC menu to rejoin.</p>
+        <footer class="controls-welcome-action"><p>Take a moment to explore. You’ll enter the arena only when you’re ready.</p><button id="controls-ready" type="button" hidden>OK, I’m ready</button></footer>
       </dialog>
       <div id="service-status" hidden>client: checking | server: checking</div>
     </div>
@@ -832,6 +833,16 @@
               button.disabled = true;
               input.readOnly = true;
               text.dataset.state = "ready";
+              text.textContent = "Review your flight controls before joining.";
+              const ready = await window.zubspaceMenu.welcomeControls();
+              if (!ready) {
+                submitted = false;
+                input.readOnly = false;
+                text.textContent = "Ready when you are.";
+                refresh();
+                button.focus();
+                return;
+              }
               text.textContent = "Checking arena…";
               const preview = await window.zubspaceMenuAdmission.check(gameServerUrl("/v1/players"), name,
                 gameServerUrl(`/v1/zones/${window.__zubspaceArena}`));
@@ -5383,6 +5394,19 @@
             }
           };
 
+          const readConnectionPing = ZubspacePlayerTelemetry.createPing({
+            now: () => performance.now(), visible: () => !document.hidden,
+            peer: () => state.peerConnection,
+          });
+          importObject.env.zub_connection_ping_ms = readConnectionPing;
+          importObject.env.zub_connection_ping_stats = ptr => {
+            const stats = readConnectionPing.stats();
+            if (!stats) return 0;
+            const bytes = heapBytes(ptr, 20);
+            const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+            stats.forEach((value, index) => view.setUint32(index * 4, value, true));
+            return 1;
+          };
           const playerTelemetry = ZubspacePlayerTelemetry.create({
             now: () => performance.now(), visible: () => !document.hidden,
             peer: () => state.peerConnection,
@@ -5414,6 +5438,16 @@
             return 0;
           };
           document.addEventListener("visibilitychange", () => playerTelemetry.reset());
+          // The game publishes its session scope; the page reports its own
+          // visibility because no frame runs once it is hidden.
+          let connectionScope = null;
+          importObject.env.zub_connection_scope = (ptr, len) => {
+            connectionScope = len === 16 ? heapBytes(ptr, len).slice() : null;
+          };
+          document.addEventListener("visibilitychange", () => {
+            const notice = ZubspacePlayerTelemetry.visibilityNotice(connectionScope, document.hidden);
+            if (notice && state.reliableChannel?.readyState === "open") sendNetworkPacket(notice);
+          });
           importObject.env.zub_player_frame = (corrections, ready) => playerTelemetry.frame(corrections >>> 0, ready !== 0);
           importObject.env.zub_player_report = (ptr, len) => {
             // Own the buffer before the asynchronous stats call yields back to WASM.
@@ -5475,6 +5509,7 @@
           importObject.env.zub_lifecycle_state = (ptr, len) => {
             try {
               window.__zubspaceLifecycle = JSON.parse(decoder.decode(heapBytes(ptr, len)));
+              if (window.__zubspaceLifecycle.inGameplay) window.zubspaceMenu?.welcomeControls?.markJoined();
               updateJoinProgress();
             } catch (error) {
               console.warn("lifecycle state publish failed", error);

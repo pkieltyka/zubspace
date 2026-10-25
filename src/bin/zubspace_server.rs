@@ -115,6 +115,9 @@ mod portal_placement;
 mod portal_warp;
 #[path = "../protocol/prize_application.rs"]
 mod prize_application;
+#[cfg(debug_assertions)]
+#[path = "zubspace_server/qa_presentation_hold.rs"]
+mod qa_presentation_hold;
 #[path = "zubspace_server/qa_trace.rs"]
 mod qa_trace;
 #[path = "../protocol/qa_trace.rs"]
@@ -143,6 +146,8 @@ mod server_explosions;
 mod server_tick;
 #[path = "zubspace_server/session.rs"]
 mod session;
+#[path = "zubspace_server/session_summary.rs"]
+mod session_summary;
 #[path = "../gameplay/player_movement.rs"]
 mod shared_player_movement;
 #[path = "zubspace_server/sim_observation.rs"]

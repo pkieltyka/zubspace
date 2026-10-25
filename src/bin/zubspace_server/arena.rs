@@ -40,7 +40,7 @@ pub(crate) use positions::{
     apply_movement_correction_application_at_tick, begin_input_history_gap_correction,
     broadcast_position, cancelled_movement_correction_receipt,
     cancelled_movement_correction_receipt_for_state, client_position_sequence_advances,
-    frequency_baseline_from_large_position, large_position_coordinates,
+    combat_view_block_cause, frequency_baseline_from_large_position, large_position_coordinates,
     large_position_coordinates_and_velocity, large_position_from_client,
     pending_frequency_baseline_is_canonical, pending_ship_life_reset_position_is_canonical,
     retire_completed_repel_sequence_window, send_position_relays_batched, set_coordinates_packet,

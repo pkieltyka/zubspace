@@ -311,8 +311,6 @@ pub(crate) fn validate_position_input_witness_with_additions(
     let Some(anchor_tick) = sender.last_position_server_tick else {
         return Err(PositionInputWitnessError::Missing);
     };
-    let upgrades = movement_upgrades_for_client(sender);
-    let tuning = movement_tuning_from_ship(sender.player.ship, upgrades);
     let positive_server_ticks =
         crate::continuum::continuum_tick_diff(accepted_server_tick, anchor_tick).max(0) as u32;
     let step_ticks = (0..inputs.len())
@@ -322,30 +320,39 @@ pub(crate) fn validate_position_input_witness_with_additions(
             crate::continuum::continuum_tick_add(anchor_tick, offset)
         })
         .collect::<Vec<_>>();
-    let rotation_steps = inputs
-        .iter()
-        .zip(step_ticks)
-        .enumerate()
-        .map(|(index, (_input, step_tick))| {
-            let sequence = previous_sequence.wrapping_add(index as u16 + 1);
-            let engine_shutdown =
-                sender.server_engine_shutdown_active_for_sequence(step_tick, sequence);
-            input_rotation_step(
-                if engine_shutdown {
-                    tuning.shutdown_rotation_per_second
-                } else {
-                    tuning.rotation_per_second
-                },
-                OBSERVED_POSITION_INTERVAL_SECONDS,
-            )
-        })
-        .collect::<Vec<_>>();
-    if !exact_orientation_history_matches(
-        witness.state.orientation,
-        witness.direction,
-        &inputs,
-        &rotation_steps,
-    ) {
+    let history_matches = |upgrades: PlayerMovementUpgrades| {
+        let tuning = movement_tuning_from_ship(sender.player.ship, upgrades);
+        let rotation_steps = step_ticks
+            .iter()
+            .enumerate()
+            .map(|(index, &step_tick)| {
+                let sequence = previous_sequence.wrapping_add(index as u16 + 1);
+                let engine_shutdown =
+                    sender.server_engine_shutdown_active_for_sequence(step_tick, sequence);
+                input_rotation_step(
+                    if engine_shutdown {
+                        tuning.shutdown_rotation_per_second
+                    } else {
+                        tuning.rotation_per_second
+                    },
+                    OBSERVED_POSITION_INTERVAL_SECONDS,
+                )
+            })
+            .collect::<Vec<_>>();
+        exact_orientation_history_matches(
+            witness.state.orientation,
+            witness.direction,
+            &inputs,
+            &rotation_steps,
+        )
+    };
+    // Input generated before the browser learned of a damage prize change
+    // turns at the replaced rate (`DamageMovementGrace`).
+    if !history_matches(movement_upgrades_for_client(sender))
+        && !sender
+            .damage_movement_grace_tuning(current_sequence)
+            .is_some_and(|tuning| history_matches(movement_upgrades_from_tuning(tuning)))
+    {
         return Err(PositionInputWitnessError::InvalidDirectionHistory);
     }
     Ok(exact)
@@ -2579,7 +2586,14 @@ pub(crate) struct PlayerMovementUpgrades {
 pub(crate) fn movement_upgrades_for_client(
     client: &crate::state::ClientHandle,
 ) -> PlayerMovementUpgrades {
-    let (thrust, top_speed, rotation, recharge) = client.movement_tuning_values_for_replay();
+    movement_upgrades_from_tuning(client.movement_tuning_values_for_replay())
+}
+
+/// Live upgrades from (thrust, top speed, rotation, recharge), the order of
+/// `ClientHandle::movement_tuning_values_for_replay`.
+pub(crate) fn movement_upgrades_from_tuning(
+    (thrust, top_speed, rotation, recharge): (f32, f32, f32, f32),
+) -> PlayerMovementUpgrades {
     PlayerMovementUpgrades {
         thrust,
         top_speed,

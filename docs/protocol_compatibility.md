@@ -381,6 +381,7 @@ are under `src/`; `server/` means `src/bin/zubspace_server/`.
 | `0x7c` | ZS | 50, 84 | Map already cached (v1), LVZ already held (v2) | `protocol/files.rs`, `zone_wire.rs` |
 | `0x80` | ZS | 54, 62 | Player telemetry report, version 1 or 2 | `browser_metrics.rs`, `server/observability.rs` |
 | `0x82` | ZS | 30 | Connection-quality echo | `protocol/connection_quality.rs` |
+| `0x85` | ZS | 19 | Page visibility notice, version 1 (sent by the page itself) | `js/zubspace_player_telemetry.js`, `server/connection_quality.rs` |
 
 ### Server to client
 

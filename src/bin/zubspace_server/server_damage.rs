@@ -389,7 +389,7 @@ fn damage_shooter_context(
     Some((runtime, shooter.player.frequency, 0, shooter.player.ship))
 }
 
-/// Mutable authority outcome staged immediately before one FIFO transaction
+/// Mutable authority outcome staged immediately before one ordered transaction
 /// reserves delivery. Collision geometry, damage, identities, and recipients
 /// remain frozen in `PreparedDamageHit`; energy/lethality intentionally derive
 /// from the exact predecessor produced by earlier committed transactions.
@@ -487,6 +487,21 @@ impl PreparedDamageTransaction {
                 .bot_hits
                 .iter()
                 .any(|prepared| prepared.victim_runtime.player_id() == player_id)
+    }
+
+    /// Conservative conflict set: retain order across any shared shooter or
+    /// primary/splash victim, including bots and predecessor/successor lives.
+    pub(crate) fn conflict_player_ids(&self) -> Vec<u16> {
+        let mut actors = vec![self.shooter_runtime.player_id()];
+        actors.extend(self.hits.iter().map(|hit| hit.victim_runtime.player_id()));
+        actors.extend(
+            self.bot_hits
+                .iter()
+                .map(|hit| hit.victim_runtime.player_id()),
+        );
+        actors.sort_unstable();
+        actors.dedup();
+        actors
     }
 
     pub(crate) fn shooter_runtime(&self) -> crate::authority_identity::PlayerRuntimeIdentity {
@@ -1458,7 +1473,9 @@ fn apply_prepared_damage_prize_loss(
     prepared: PreparedDamagePrizeLoss,
 ) {
     let energy_before_prize = client.server_energy;
+    let tuning_before = client.movement_tuning_values_for_replay();
     apply_prepared_damage_prize_mutation(client, tick, prepared);
+    client.begin_damage_movement_grace(tuning_before);
     client.last_damage_prize_loss_seq = Some(damage_seq);
     client.last_damage_prize_loss_id = Some(prepared.prize_id);
     info!(
@@ -1487,6 +1504,26 @@ fn apply_prepared_damage_prize_mutation(
     } else {
         client.apply_server_prize_effect_at_tick(-prepared.prize_id, tick);
     }
+}
+
+/// Remove `prize_id` through the production damage path without the random
+/// selection, for position-admission fixtures.
+#[cfg(test)]
+pub(crate) fn apply_damage_prize_loss_for_test(
+    client: &mut crate::state::ClientHandle,
+    tick: u32,
+    damage_seq: u32,
+    prize_id: i16,
+) {
+    apply_prepared_damage_prize_loss(
+        client,
+        tick,
+        damage_seq,
+        PreparedDamagePrizeLoss {
+            prize_id,
+            replacement_prize_id: None,
+        },
+    );
 }
 
 #[cfg(test)]

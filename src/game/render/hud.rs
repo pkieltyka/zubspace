@@ -56,6 +56,7 @@ impl Game {
             );
             self.draw_energy_digits();
         }
+        self.draw_connection_ping();
 
         let speed = self.ship.vel.length();
         let mode = if self.player_respawn_timer > 0.0 {

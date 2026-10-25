@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { acknowledgeControlsWelcome } from "../../tools/browser_controls_welcome.mjs";
 import { fetchGameStatusResponse } from "../../tools/game_status.mjs";
 // Real form input and RTC admission. Storage has its own fault-injection
 // component; this scenario uses the ordinary HTTP/cache/protocol paths.
@@ -27,6 +28,7 @@ async function submit(send,evaluate) {
   await send("Input.insertText",{text:"CachePilot"});
   await send("Input.dispatchKeyEvent",{type:"keyDown",key:"Enter",code:"Enter",windowsVirtualKeyCode:13});
   await send("Input.dispatchKeyEvent",{type:"keyUp",key:"Enter",code:"Enter",windowsVirtualKeyCode:13});
+  await acknowledgeControlsWelcome(send, evaluate);
 }
 
 async function ready(client) {

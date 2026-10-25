@@ -8,6 +8,7 @@
 // then reads the same-origin /v1/status. Prints one JSON object and exits nonzero
 // unless the browser is still in gameplay at the end. A screenshot lands in
 // .debug/. No window opens; this is a deployment check, not an acceptance gate.
+import { acknowledgeControlsWelcome } from "./browser_controls_welcome.mjs";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -89,6 +90,7 @@ try {
   await key("keyDown");
   await key("keyUp");
   const joinStarted = Date.now();
+  await acknowledgeControlsWelcome(send, evaluate);
   await waitFor("an authoritative gameplay life", "window.__zubspaceLifecycle?.inGameplay === true", 30_000);
   result.joinToGameplayMs = Date.now() - joinStarted;
   await sleep(holdSeconds * 1000);

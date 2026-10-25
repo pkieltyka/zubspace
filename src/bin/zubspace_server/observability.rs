@@ -277,6 +277,16 @@ pub(crate) fn receive_player_report(
             .browser_game_sends_dropped
             .saturating_add(u64::from(dropped));
     }
+    if let Some(client) = state.clients.get_mut(&identity.player_id) {
+        client.session_summary.browser_report(
+            frames,
+            sum_us,
+            slow,
+            max_us,
+            corrections,
+            (ice_us != u32::MAX).then_some(ice_us),
+        );
+    }
     tracing::debug!(event = "player_experience_window", player_id = identity.player_id,
         session_id = ?identity.session_id, arena_stream_id = u64_at(10), life_seq = u32_at(18),
         frames, slow_frames = slow, frame_mean_us = sum_us / frames, frame_max_us = max_us,
@@ -652,6 +662,28 @@ pub(crate) fn metrics(state: &ServerState, started_at: Instant) -> String {
             out,
             "zubspace_realtime_event_game_copies_total{{decision=\"{decision}\"}} {}",
             total.load(std::sync::atomic::Ordering::Relaxed)
+        );
+    }
+    for (name, help, total) in [
+        (
+            "zubspace_damage_readiness_waits_total",
+            "Damage scheduling attempts deferred by recipient presentation readiness.",
+            state.damage_readiness_waits_total,
+        ),
+        (
+            "zubspace_damage_conflict_waits_total",
+            "Damage scheduling attempts deferred by an older conflicting transaction.",
+            state.damage_conflict_waits_total,
+        ),
+        (
+            "zubspace_damage_independent_commits_total",
+            "Damage transactions committed while an older independent transaction waited.",
+            state.damage_independent_commits_total,
+        ),
+    ] {
+        let _ = writeln!(
+            out,
+            "# HELP {name} {help}\n# TYPE {name} counter\n{name} {total}"
         );
     }
     t.snapshot_ack.prometheus("zubspace_snapshot_ack_round_trip_seconds", "Snapshot emission to received codec acknowledgement; includes network and browser scheduling, not application receipt or input-to-photon latency.", &mut out);

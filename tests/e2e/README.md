@@ -242,3 +242,15 @@ server rejects duplicate names.
   map, no LVZ). The first checks a carried flag drawn on a moving carrier; the
   second checks the HUD carry badge pixels before, during and after a carry.
   These prove presentation only.
+
+## Independent combat under a stalled recipient
+
+Run `make dev`, then
+`scripts/e2e-hyprland-tools/run -- make test-e2e-slow-client-isolation`.
+This four-Chrome lane keeps an exact A-to-B collision pending by holding B's
+projectile presentation in the real server queue. C-to-D shots must still move,
+be drawn and apply once within the normal server scheduling bound. Releasing B
+must finish its original collision once, followed by full session/queue cleanup.
+Only scenario Spawn coordinates change; map and Chaos weapon tuning stay intact.
+The server seam is debug-only and automatically bounded. Details are in
+[`E2E diagnostics`](../../docs/e2e-diagnostics.md#slow-client-combat-isolation).

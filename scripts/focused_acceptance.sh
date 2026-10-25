@@ -105,6 +105,8 @@ LANES=(
   "make test-e2e-thor-proximity"
   # Random lifecycle positions need real-key encounter setup and held-view proof.
   "make test-e2e-spawn-rendezvous"
+  # One stalled recipient must not stop an independent real-browser fight.
+  "make test-e2e-slow-client-isolation"
 )
 
 FROM=1

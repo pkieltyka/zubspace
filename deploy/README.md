@@ -15,7 +15,7 @@ rootless Podman Compose project owned by `peter`, defined by
 | WebRTC UDP (public) | 9402-9901 | 9902-10401 |
 | Prometheus | 127.0.0.1:9090 | 127.0.0.1:9091 |
 | Players / bots | 500 / 15 (ships 1,4,5,7) | 500 / 15 (ships 1,4,5,7) |
-| Server logs | INFO, JSON, journal; per-shot, per-hit and per-acknowledgement lines off | DEBUG, JSON, `~/zubspace/dev/logs/server.log` |
+| Server logs | INFO, JSON, journal; combat lines on, per-acknowledgement lines off, DEBUG for a few low-volume modules (`docs/observability.md`) | DEBUG, JSON, `~/zubspace/dev/logs/server.log` |
 | Client presentation traces | off | on (`logs/client.log`) |
 | CPU | all 3 vCPU, full weight | at most 1 vCPU, quarter weight |
 | Search engines | indexed | `X-Robots-Tag: noindex` on the site and API |
@@ -86,6 +86,7 @@ make remote-status                       # per environment: commit, players, ses
 make remote-history                      # deploys.log of both environments
 make remote-logs-prod                    # follow the server log (dev: logs/server.log)
 make remote-logs-dev SERVICE=cloudflared FOLLOW=0 TAIL=50
+make remote-sessions-prod HOURS=24        # each player session, then RTT bands, fps and refused shots
 make remote-restart-prod SERVICE=server  # without SERVICE: every service
 make remote-shell                        # ssh into ~/zubspace
 ```

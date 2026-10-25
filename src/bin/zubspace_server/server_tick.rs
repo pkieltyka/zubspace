@@ -931,6 +931,54 @@ fn frozen_transaction_harmful_ready(
     })
 }
 
+fn record_committed_projectile_hit(
+    state: &mut ServerState,
+    hit: &crate::authority_projectiles::ProjectileHit,
+    committed_tick: u32,
+) {
+    info!(
+        target: crate::log_targets::SERVER_TICK_COMBAT,
+        projectile_id = hit.projectile_id,
+        owner_id = hit.owner_id,
+        victim_id = hit.victim_id,
+        owner_life_seq = hit.owner_life_seq,
+        victim_life_seq = hit.victim_life_seq,
+        server_tick = hit.tick,
+        committed_tick,
+        weapon = hit.weapon_data,
+        x = hit.x,
+        y = hit.y,
+        "server projectile hit"
+    );
+    debug!(
+        "zubspace_event {{\"type\":\"server_projectile_hit\",\"projectile_id\":{},\"owner_id\":{},\"victim_id\":{},\"owner_life_seq\":{},\"victim_life_seq\":{},\"server_tick\":{},\"weapon\":{},\"x\":{},\"y\":{}}}",
+        hit.projectile_id,
+        hit.owner_id,
+        hit.victim_id,
+        hit.owner_life_seq,
+        hit.victim_life_seq,
+        hit.tick,
+        hit.weapon_data,
+        hit.x,
+        hit.y
+    );
+    if state.qa_traces.is_recording() {
+        state.qa_traces.record_for_all(serde_json::json!({
+            "type": "server_projectile_hit",
+            "projectileId": hit.projectile_id,
+            "ownerId": hit.owner_id,
+            "victimId": hit.victim_id,
+            "ownerLifeSeq": hit.owner_life_seq,
+            "victimLifeSeq": hit.victim_life_seq,
+            "serverTick": hit.tick,
+            "committedTick": committed_tick,
+            "weapon": hit.weapon_data,
+            "x": hit.x,
+            "y": hit.y,
+        }));
+    }
+}
+
 pub(crate) fn run_server_tick_at_tick(
     state: &Arc<Mutex<ServerState>>,
     now: Instant,
@@ -1591,7 +1639,7 @@ pub(crate) fn run_server_tick_at_tick(
         // `hull_snapshots_scratch` (write), and `active_projectiles`
         // (write) as disjoint fields — bare `state.field` access can't
         // cross the iter borrow, but pattern bindings can.
-        let hits = {
+        let _primary_candidates = {
             let crate::state::ServerState {
                 clients,
                 bots,
@@ -1824,6 +1872,7 @@ pub(crate) fn run_server_tick_at_tick(
         // damage anchors while application waits.
         crate::server_explosions::freeze_wall_explosions(&mut state);
         let collision_hits = state.active_projectiles.pending_hits_for_preparation();
+        let mut prepared_count = 0;
         let mut invalid_projectile_ids = Vec::new();
         for pending_hit in &collision_hits {
             if state
@@ -1832,6 +1881,10 @@ pub(crate) fn run_server_tick_at_tick(
             {
                 continue;
             }
+            if prepared_count == crate::authority_projectiles::MAX_PENDING_HIT_RETRIES_PER_TICK {
+                break;
+            }
+            prepared_count += 1;
             let mut geometry_metrics =
                 crate::authority_projectiles::PresentationGeometryMetrics::default();
             let prepared =
@@ -1998,59 +2051,12 @@ pub(crate) fn run_server_tick_at_tick(
             state.active_projectiles.resolve_hit(*projectile_id);
             state.pending_damage_transactions.remove(projectile_id);
         }
-        let hits = hits
+        // Full collision-order ledger, not a readiness prefix. The commit
+        // scheduler below blocks only transactions sharing an affected actor.
+        let hits = collision_hits
             .into_iter()
             .filter(|hit| !invalid_projectile_ids.contains(&hit.projectile_id))
-            .filter(|hit| {
-                state
-                    .pending_damage_transactions
-                    .get(&hit.projectile_id)
-                    .is_some_and(|transaction| {
-                        frozen_transaction_harmful_ready(&state, transaction, server_tick)
-                    })
-            })
             .collect::<Vec<_>>();
-        for hit in &hits {
-            info!(
-                target: crate::log_targets::SERVER_TICK_COMBAT,
-                projectile_id = hit.projectile_id,
-                owner_id = hit.owner_id,
-                victim_id = hit.victim_id,
-                owner_life_seq = hit.owner_life_seq,
-                victim_life_seq = hit.victim_life_seq,
-                server_tick = hit.tick,
-                weapon = hit.weapon_data,
-                x = hit.x,
-                y = hit.y,
-                "server projectile hit"
-            );
-            debug!(
-                "zubspace_event {{\"type\":\"server_projectile_hit\",\"projectile_id\":{},\"owner_id\":{},\"victim_id\":{},\"owner_life_seq\":{},\"victim_life_seq\":{},\"server_tick\":{},\"weapon\":{},\"x\":{},\"y\":{}}}",
-                hit.projectile_id,
-                hit.owner_id,
-                hit.victim_id,
-                hit.owner_life_seq,
-                hit.victim_life_seq,
-                hit.tick,
-                hit.weapon_data,
-                hit.x,
-                hit.y
-            );
-            if state.qa_traces.is_recording() {
-                state.qa_traces.record_for_all(serde_json::json!({
-                    "type": "server_projectile_hit",
-                    "projectileId": hit.projectile_id,
-                    "ownerId": hit.owner_id,
-                    "victimId": hit.victim_id,
-                    "ownerLifeSeq": hit.owner_life_seq,
-                    "victimLifeSeq": hit.victim_life_seq,
-                    "serverTick": hit.tick,
-                    "weapon": hit.weapon_data,
-                    "x": hit.x,
-                    "y": hit.y,
-                }));
-            }
-        }
         state.expire_projectiles_older_than_by_weapon(
             server_tick,
             DEFAULT_PROJECTILE_RETENTION_TICKS,
@@ -2066,25 +2072,59 @@ pub(crate) fn run_server_tick_at_tick(
         (hits, expired_projectiles, expired_prize_claims)
     };
     // Drop the state lock before the damage/event transaction re-acquires it.
-    // A collision remains frozen in the registry while recipient capacity is
+    // A collision remains frozen in the registry while its recipient capacity is
     // full. Only a committed or permanently invalid transaction resolves the
     // projectile, so pressure cannot cause a phantom despawn.
+    let mut blocked_actors = std::collections::HashSet::new();
+    let mut attempted = 0;
     for hit in &hits {
-        match crate::server_damage::try_apply_server_detected_hit_with_broadcast(state_arc, hit) {
+        let actors = {
+            let mut state = state_arc.lock().expect("server state");
+            let Some(transaction) = state.pending_damage_transactions.get(&hit.projectile_id)
+            else {
+                // Unprepared roots are at the bounded preparation tail. Their
+                // unknown splash membership cannot be safely overtaken yet.
+                break;
+            };
+            let actors = transaction.conflict_player_ids();
+            let current = transaction.identities_are_current(&state);
+            let conflict = actors.iter().any(|actor| blocked_actors.contains(actor));
+            let ready = frozen_transaction_harmful_ready(&state, transaction, server_tick);
+            if current && (conflict || !ready) {
+                if conflict {
+                    state.damage_conflict_waits_total =
+                        state.damage_conflict_waits_total.saturating_add(1);
+                } else {
+                    state.damage_readiness_waits_total =
+                        state.damage_readiness_waits_total.saturating_add(1);
+                }
+                blocked_actors.extend(actors);
+                continue;
+            }
+            actors
+        };
+        if attempted == crate::authority_projectiles::MAX_PENDING_HIT_RETRIES_PER_TICK {
+            break;
+        }
+        attempted += 1;
+        let application =
+            crate::server_damage::try_apply_server_detected_hit_with_broadcast(state_arc, hit);
+        match application {
             crate::server_damage::DetectedHitApplication::Applied
             | crate::server_damage::DetectedHitApplication::Invalid => {
-                let mut state = state_arc
-                    .lock()
-                    .expect("server state should not be poisoned");
+                let mut state = state_arc.lock().expect("server state");
+                if application == crate::server_damage::DetectedHitApplication::Applied {
+                    if !blocked_actors.is_empty() {
+                        state.damage_independent_commits_total =
+                            state.damage_independent_commits_total.saturating_add(1);
+                    }
+                    record_committed_projectile_hit(&mut state, hit, server_tick);
+                }
                 state.active_projectiles.resolve_hit(hit.projectile_id);
                 state.prune_retired_projectile_owners();
             }
             crate::server_damage::DetectedHitApplication::DeferredCapacity => {
-                // Damage transactions are a single FIFO authority ledger.
-                // A later collision must not derive an outcome from state
-                // that assumes this predecessor committed. Leave this hit and
-                // every later projectile frozen for the next bounded retry.
-                break;
+                blocked_actors.extend(actors);
             }
         }
     }
@@ -4159,6 +4199,269 @@ mod tests {
         assert_eq!(splash_events, 2);
         assert_eq!(locked.next_damage_seq, 4);
         assert!(locked.pending_damage_transactions.is_empty());
+    }
+
+    #[test]
+    fn isolation_unready_victim_does_not_delay_an_independent_fight() {
+        let state = Arc::new(Mutex::new(ServerState::default()));
+        let mut ids = Vec::new();
+        for _ in 0..4 {
+            let (tx, _rx) = mpsc::channel();
+            let id = register_connection(&state, tx);
+            join_arena(&state, id, 0);
+            ids.push(id);
+        }
+        let [a, b, c, d] = ids.as_slice() else {
+            panic!("four clients")
+        };
+        let tick = 44_000;
+        {
+            let mut locked = state.lock().unwrap();
+            for (id, x, y, frequency) in [
+                (*a, 200, 700, 1),
+                (*b, 500, 700, 2),
+                (*c, 200, 1400, 3),
+                (*d, 500, 1400, 4),
+            ] {
+                configure_damage_test_client(&mut locked, id, tick, x, y, frequency, 1700);
+            }
+            locked
+                .clients
+                .get_mut(b)
+                .unwrap()
+                .threat_presentation
+                .clear();
+            let first =
+                damage_test_projectile(*a, locked.clients[a].life_seq, 350, tick, 2, 500, 700);
+            let mut second =
+                damage_test_projectile(*c, locked.clients[c].life_seq, 351, tick, 2, 500, 1400);
+            second.shot_group_id = first.shot_group_id + 1;
+            locked.record_projectile(first);
+            locked.record_projectile(second);
+        }
+        run_server_tick_at_tick(&state, Instant::now(), tick);
+        run_server_tick_at_tick(&state, Instant::now(), tick + 1);
+        let locked = state.lock().unwrap();
+        assert_eq!(
+            locked.clients[b].server_energy, 1700,
+            "unpresented threat cannot harm B"
+        );
+        assert!(
+            locked.clients[d].server_energy < 1700,
+            "healthy C-to-D fight must commit while A-to-B remains blocked"
+        );
+        assert_eq!(locked.active_projectiles.pending_hit_count(), 1);
+        assert_eq!(locked.pending_damage_transactions.len(), 1);
+        assert_eq!(locked.damage_independent_commits_total, 1);
+        let healthy_energy = locked.clients[d].server_energy;
+        drop(locked);
+        {
+            let mut locked = state.lock().unwrap();
+            let source = locked.active_player_runtime_identity(*a).unwrap();
+            locked
+                .clients
+                .get_mut(b)
+                .unwrap()
+                .threat_presentation
+                .observe_emitted(
+                    source,
+                    81,
+                    tick - crate::threat_presentation::THREAT_HARD_OPEN_TICKS,
+                );
+        }
+        run_server_tick_at_tick(
+            &state,
+            Instant::now(),
+            tick + crate::threat_presentation::THREAT_HARD_OPEN_TICKS + 2,
+        );
+        let locked = state.lock().unwrap();
+        assert!(
+            locked.clients[b].server_energy < 1700,
+            "released collision commits"
+        );
+        assert_eq!(
+            locked.clients[d].server_energy, healthy_energy,
+            "no duplicate healthy damage"
+        );
+        assert!(locked.pending_damage_transactions.is_empty());
+        assert_eq!(locked.active_projectiles.pending_hit_count(), 0);
+    }
+
+    #[test]
+    fn isolation_rng_is_serialized_in_actual_independent_commit_order() {
+        let mut outcomes = Vec::new();
+        for stalled in [false, true] {
+            let state = Arc::new(Mutex::new(ServerState::default()));
+            let mut ids = Vec::new();
+            for _ in 0..4 {
+                let (tx, _rx) = mpsc::channel();
+                let id = register_connection(&state, tx);
+                join_arena(&state, id, 0);
+                ids.push(id);
+            }
+            let [a, b, c, d] = ids.as_slice() else {
+                panic!("four clients")
+            };
+            let tick = 44_000;
+            {
+                let mut locked = state.lock().unwrap();
+                for (id, x, y, frequency) in [
+                    (*a, 200, 700, 1),
+                    (*b, 500, 700, 2),
+                    (*c, 200, 1400, 3),
+                    (*d, 500, 1400, 4),
+                ] {
+                    configure_damage_test_client(&mut locked, id, tick, x, y, frequency, 1300);
+                    locked.clients.get_mut(&id).unwrap().server_bounty = 30;
+                }
+                locked.damage_prize_rng_seed = 3;
+                let first =
+                    damage_test_projectile(*a, locked.clients[a].life_seq, 350, tick, 2, 500, 700);
+                let second =
+                    damage_test_projectile(*c, locked.clients[c].life_seq, 351, tick, 2, 500, 1400);
+                if stalled {
+                    locked
+                        .clients
+                        .get_mut(b)
+                        .unwrap()
+                        .threat_presentation
+                        .clear();
+                    locked.record_projectile(first);
+                    locked.record_projectile(second);
+                } else {
+                    // The control has the same actual C-then-A commit order,
+                    // without any readiness wait or retry.
+                    locked.record_projectile(second);
+                    locked.record_projectile(first);
+                }
+            }
+            run_server_tick_at_tick(&state, Instant::now(), tick);
+            run_server_tick_at_tick(&state, Instant::now(), tick + 1);
+            if stalled {
+                let mut locked = state.lock().unwrap();
+                assert_eq!(locked.clients[b].server_energy, 1300);
+                assert_ne!(
+                    locked.damage_prize_rng_seed, 3,
+                    "independent commit consumes its own draw"
+                );
+                let source = locked.active_player_runtime_identity(*a).unwrap();
+                locked
+                    .clients
+                    .get_mut(b)
+                    .unwrap()
+                    .threat_presentation
+                    .observe_emitted(
+                        source,
+                        81,
+                        tick - crate::threat_presentation::THREAT_HARD_OPEN_TICKS,
+                    );
+            }
+            run_server_tick_at_tick(
+                &state,
+                Instant::now(),
+                tick + crate::threat_presentation::THREAT_HARD_OPEN_TICKS + 2,
+            );
+            let locked = state.lock().unwrap();
+            assert!(locked.pending_damage_transactions.is_empty());
+            assert_eq!(locked.next_damage_seq, 2);
+            outcomes.push((
+                locked.damage_prize_rng_seed,
+                locked.clients[b].server_energy,
+                locked.clients[d].server_energy,
+                locked.clients[b].server_prize_state_revision,
+                locked.clients[d].server_prize_state_revision,
+            ));
+            let seed = locked.damage_prize_rng_seed;
+            drop(locked);
+            run_server_tick_at_tick(
+                &state,
+                Instant::now(),
+                tick + crate::threat_presentation::THREAT_HARD_OPEN_TICKS + 3,
+            );
+            assert_eq!(
+                state.lock().unwrap().damage_prize_rng_seed,
+                seed,
+                "resolved retries never draw again"
+            );
+        }
+        assert_eq!(
+            outcomes[0], outcomes[1],
+            "deferral does not reserve or duplicate random draws; actual commit order owns the stream"
+        );
+    }
+
+    #[test]
+    fn isolation_a_full_retry_prefix_does_not_starve_new_independent_preparation() {
+        let state = Arc::new(Mutex::new(ServerState::default()));
+        let mut ids = Vec::new();
+        for _ in 0..5 {
+            let (tx, _rx) = mpsc::channel();
+            let id = register_connection(&state, tx);
+            join_arena(&state, id, 0);
+            ids.push(id);
+        }
+        let [a, b, c, d, e] = ids.as_slice() else {
+            panic!("five clients")
+        };
+        let tick = 44_000;
+        {
+            let mut locked = state.lock().unwrap();
+            for (id, x, y, frequency) in [
+                (*a, 200, 700, 1),
+                (*b, 500, 700, 2),
+                (*c, 200, 1400, 3),
+                (*d, 500, 1400, 4),
+                (*e, 200, 750, 5),
+            ] {
+                configure_damage_test_client(&mut locked, id, tick, x, y, frequency, 1700);
+            }
+            locked
+                .clients
+                .get_mut(b)
+                .unwrap()
+                .threat_presentation
+                .clear();
+            for (index, owner) in [a, e].into_iter().enumerate() {
+                for ordinal in 0..128 {
+                    let projectile = damage_test_projectile(
+                        *owner,
+                        locked.clients[owner].life_seq,
+                        1000 + index as u32 * 128 + ordinal,
+                        tick,
+                        2,
+                        500,
+                        700,
+                    );
+                    locked.record_projectile(projectile);
+                }
+            }
+        }
+        run_server_tick_at_tick(&state, Instant::now(), tick);
+        run_server_tick_at_tick(&state, Instant::now(), tick + 1);
+        {
+            let mut locked = state.lock().unwrap();
+            assert_eq!(locked.pending_damage_transactions.len(), 256);
+            let independent = damage_test_projectile(
+                *c,
+                locked.clients[c].life_seq,
+                5000,
+                tick + 1,
+                2,
+                500,
+                1400,
+            );
+            locked.record_projectile(independent);
+        }
+        run_server_tick_at_tick(&state, Instant::now(), tick + 2);
+        let locked = state.lock().unwrap();
+        assert_eq!(locked.clients[b].server_energy, 1700);
+        assert!(
+            locked.clients[d].server_energy < 1700,
+            "already-prepared unready prefix cannot consume new preparation's entire budget"
+        );
+        assert_eq!(locked.pending_damage_transactions.len(), 256);
+        assert_eq!(locked.active_projectiles.pending_hit_count(), 256);
+        assert_eq!(locked.damage_independent_commits_total, 1);
     }
 
     #[test]

@@ -147,10 +147,23 @@ sent; Tab completes a name after `/p`.
 | `'text`, `//text`, `/t text`, `/team text` | Team message |
 | `/p name text` (also `/pm`, `/msg`, `/private`) | Private message, by name, name prefix or player id |
 | `/s N text`, `/sound N text` | Message with chat sound N (0–255) |
+| `?ping`, `?lag` | Show local RTC connection diagnostics |
 | `?status` | Show recharge, thruster, speed and rotation upgrade percentages and shrapnel |
 | `?sound N`, `?chat N`, `?voice N`, `?music N` | Volume 0–10 (`?sound=N` also works) |
 
 The server only relays chat; it has no `?` or `*` commands.
+
+### Connection diagnostics
+
+The top-right HUD shows the selected WebRTC route's round-trip time beneath
+energy, in milliseconds, sampled once a second. Missing, disconnected or stale
+measurements display `-- ms`; local offline play has no ping readout. The
+readout turns yellow from 150 ms and red from 300 ms. This is
+transport RTT, not a measurement of server processing or presentation delay.
+`?ping` reports current, average, low and high RTT over up to 60 recent samples.
+`?lag` adds mean successive RTT variation. Packet loss is explicitly unavailable:
+the server's probe-loss readings are not sent to the client by this protocol.
+Both commands reply locally in chat without broadcasting the request.
 
 ### Developer keys
 
@@ -266,6 +279,25 @@ Ships are assigned round-robin from `bot_ship_types`. Names come from a pool of
 40, with `Bot N` as a fallback. About half the bots (chosen at random) have
 X-Radar on.
 
+A fifteen-bot roster has **3 Hard, 5 Medium and 7 Easy** pilots. Tiers are
+shuffled independently of names, ship types and X-Radar, and persist through
+respawns. Other roster sizes use `ceil(count / 5)` Hard and approximately
+`count / 3` Medium (capped by the remaining slots), with the rest Easy. One bot
+retains the existing Hard behavior.
+
+| AI tier | Fire delay × ship setting | New-target reaction | Moving-target lead | Maximum aim drift |
+| --- | --- | --- | --- | --- |
+| Hard | 2× (previous behavior) | Immediate | Full intercept | None |
+| Medium | 3× | 200 ms | 85% | ±3° |
+| Easy | 4× | 400 ms | 65% | ±7° |
+
+Aim drift changes smoothly over four seconds, staggered by pilot and life.
+The bot steers toward its imperfect aim before firing; shots still leave its
+actual facing and use ordinary shared weapon physics. All tiers have identical
+ship stats, damage and energy rules for the same ship/loadout. Difficulty does
+not weaken movement, collision handling or bomb self-preservation. These are
+initial tuning values for playtesting, not a claim of equal win rates.
+
 **Behaviour** (`src/bin/zubspace_server/server_tick/bots.rs`). Each tick a bot
 picks one goal, in order:
 
@@ -280,8 +312,8 @@ picks one goal, in order:
 6. Otherwise, hold near the map centre.
 
 Bots fly with their ship's real turning, thrust and speed, collide with walls,
-doors and bricks, and aim with lead. They fire at twice their ship's authored
-fire delay, never use multifire, and hold fire while no human is in the game.
+doors and bricks, and aim with the tier's lead and accuracy. They use their
+tier's fire delay, never use multifire, and hold fire while no human is in the game.
 After two consecutive gun volleys a bot fires a bomb instead when a two-second
 forecast shows the explosion reaching the target without catching the bot,
 and it keeps at least a quarter of its maximum energy after paying for it

@@ -29,14 +29,16 @@ log_format = "json"
 log_file = "/var/log/zubspace/server.log"
 metrics_listen = "127.0.0.1:9300"
 
-quality_max_rtt_ms = 600
+# Prod's thresholds (see deploy/prod/zubspace_server.toml).
+quality_max_rtt_ms = 400
 quality_max_loss_per_mille = 150
-quality_recovery_rtt_ms = 400
+quality_recovery_rtt_ms = 300
 quality_recovery_loss_per_mille = 100
 
 enable_objectives = false
 sim_observe = false
-observer_network_profile = "clean-lan"
+# As prod: per-connection presentation delay, so distant players' shots verify.
+observer_network_profile = "auto"
 qa_trace_upload = false
 # Every joined browser uploads a compact presentation window about every 20
 # seconds (docs/observability.md, "Client presentation traces").

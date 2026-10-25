@@ -1,7 +1,8 @@
 //! Targets for high-rate, per-event log lines: one line per shot, projectile,
 //! hit, damage or acknowledgement. Each target sits directly under the module
 //! that emits it, so a filter naming that module (as the E2E harnesses use)
-//! still matches, while prod's `log_filter` switches only these lines off.
+//! still matches, while a deployment's `log_filter` can switch only these lines
+//! off (prod keeps combat and drops the acknowledgement targets).
 //! Emitting modules assert the placement at compile time with [`is_child_of`].
 
 pub(crate) const SERVER_TICK_COMBAT: &str = "zubspace_server::server_tick::combat";

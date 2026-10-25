@@ -93,6 +93,81 @@
       } catch { return null; }
     },
   };
+  // Acknowledgement is browser-local; storage may be unavailable in private mode.
+  global.zubspaceCreateControlsWelcome = ({ dialog, button, title, storage }) => {
+    const key = "zubspace.controls-welcome.v1";
+    let acknowledged = false, persisted = false, pending = null;
+    const needed = () => {
+      try { acknowledged ||= storage().getItem(key) === "1"; } catch { /* use this page's memory */ }
+      return !acknowledged;
+    };
+    const welcome = () => {
+      if (!needed()) return Promise.resolve(true);
+      if (pending) return pending;
+      const previousTitle = title.textContent;
+      title.textContent = "Welcome, player";
+      dialog.dataset.welcome = "true";
+      button.hidden = false;
+      pending = new Promise(resolve => {
+        let accepted = false;
+        const accept = () => { accepted = true; dialog.close(); };
+        const close = () => {
+          button.removeEventListener("click", accept);
+          dialog.removeEventListener("close", close);
+          title.textContent = previousTitle;
+          delete dialog.dataset.welcome;
+          button.hidden = true;
+          pending = null;
+          if (accepted) {
+            acknowledged = true;
+          }
+          resolve(accepted);
+        };
+        button.addEventListener("click", accept);
+        dialog.addEventListener("close", close);
+        dialog.showModal();
+        // Start at the welcome and keyboard, rather than the bottom action.
+        title.focus();
+      });
+      return pending;
+    };
+    welcome.needed = needed;
+    welcome.markJoined = () => {
+      if (!acknowledged || persisted) return;
+      try { storage().setItem(key, "1"); persisted = true; } catch { /* retain this page's acknowledgement */ }
+    };
+    return welcome;
+  };
+  // This preference changes the guide and hints; both gameplay layouts stay live.
+  global.zubspaceInstallControlsLayout = ({ dialog, footer, storage }) => {
+    const key = "zubspace.controls.layout.v1";
+    const buttons = [...dialog.querySelectorAll(".controls-layouts button")];
+    const valid = value => ["1", "2", "all"].includes(value);
+    const apply = layout => {
+      dialog.dataset.layout = layout;
+      for (const button of buttons) {
+        button.setAttribute("aria-pressed", String(button.dataset.layoutOption === layout));
+      }
+      const hints = layout === "2" ? [["WASD"], [","], ["."]] :
+        layout === "1" ? [["ARROWS"], ["X", "CTRL"], ["Z", "TAB"]] :
+        [["WASD", "ARROWS"], [",", "X", "CTRL"], [".", "Z", "TAB"]];
+      // All markup and labels come from the fixed guide above, never storage.
+      const keys = hints.map(group => group.map(key => `<kbd>${key}</kbd>`).join(" or "));
+      footer.innerHTML = `<span>${keys[0]} to fly</span> <span><span class="controls-separator" aria-hidden="true">·</span> ${keys[1]} for bullets</span> <span><span class="controls-separator" aria-hidden="true">·</span> ${keys[2]} for bombs</span>`;
+    };
+    let initial = "2";
+    try {
+      const saved = storage().getItem(key);
+      if (valid(saved)) initial = saved;
+    } catch { /* Storage may be blocked; Modern remains the default. */ }
+    apply(initial);
+    for (const button of buttons) button.addEventListener("click", () => {
+      const layout = button.dataset.layoutOption;
+      if (!valid(layout)) return;
+      apply(layout);
+      try { storage().setItem(key, layout); } catch { /* Keep the current-page choice. */ }
+    });
+  };
   if (!global.document) return;
   const overlay = document.querySelector("#loading-overlay");
   const canvas = document.querySelector("#menu-stars");
@@ -161,19 +236,23 @@
   document.querySelector("#mobile-join-message").hidden = !mobile;
   const dialog = document.querySelector("#controls-dialog");
   document.body.appendChild(dialog);
+  const welcomeControls = global.zubspaceCreateControlsWelcome({
+    dialog,
+    button: document.querySelector("#controls-ready"),
+    title: document.querySelector("#controls-title"),
+    storage: () => global.localStorage,
+  });
   global.zubspaceShowControls = () => {
     if (!dialog.open) {
       dispatchEvent(new Event("zubspace-controls-open"));
       dialog.showModal();
     }
   };
-  // The guide lights both keyboard layouts, or just one; the game accepts both.
-  const layoutButtons = [...dialog.querySelectorAll(".controls-layouts button")];
-  const showLayout = event => {
-    dialog.dataset.layout = event.currentTarget.dataset.layoutOption;
-    for (const button of layoutButtons) button.setAttribute("aria-pressed", String(button === event.currentTarget));
-  };
-  for (const button of layoutButtons) button.addEventListener("click", showLayout);
+  global.zubspaceInstallControlsLayout({
+    dialog,
+    footer: document.querySelector(".menu-controls-text"),
+    storage: () => global.localStorage,
+  });
   const controlsOpen = document.querySelector("#controls-open");
   const controlsClose = document.querySelector("#controls-close");
   const credits = document.querySelector("#credits-dialog");
@@ -278,6 +357,7 @@
   global.zubspaceMenu = {
     get active() { return active; },
     mobile,
+    welcomeControls,
     get selectedShip() { return selectedShip; },
     setSelectedShip(index) {
       if (!Number.isInteger(index) || index < 0 || index > 7) return false;

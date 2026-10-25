@@ -32,7 +32,7 @@ pub(crate) mod timing;
 mod movement_clock;
 pub(crate) use movement_clock::MovementTimeBudget;
 
-pub(crate) use bots::ServerBot;
+pub(crate) use bots::{BotDifficulty, ServerBot};
 #[allow(unused_imports)]
 pub(crate) use client_runtime::{status_inventory_tuning, weapon_inventory_tuning};
 
@@ -528,6 +528,7 @@ pub(crate) struct ClientHandle {
     pub(crate) snapshot_holds: std::collections::HashMap<u16, u8>,
     pub(crate) maxed_spawn_loadout: bool,
     pub(crate) spawn_idle: crate::spawn_idle::SpawnIdleTracker,
+    pub(crate) session_summary: crate::session_summary::SessionSummary,
     /// Internal transport incarnation. Unlike the reusable Continuum player
     /// id, this value is allocated once and never reused by this server state.
     pub(crate) session_id: PlayerSessionId,
@@ -593,6 +594,9 @@ pub(crate) struct ClientHandle {
     pub(crate) server_engine_shutdown_until_tick: Option<u32>,
     pub(crate) pending_prize_effect_applications:
         std::collections::VecDeque<PendingPrizeEffectApplication>,
+    /// Movement tuning a damage prize change replaced, for input the browser
+    /// generated before it could have learned of the change.
+    pub(crate) damage_movement_grace: Option<DamageMovementGrace>,
     pub(crate) prize_effect_application_terminals:
         std::collections::VecDeque<crate::prize_application::PrizeEffectAccepted>,
     pub(crate) server_emp_start_sequence: Option<u16>,
@@ -1301,6 +1305,20 @@ pub(crate) struct PendingPrizeEffectApplication {
     pub(crate) movement_tuning_before_bits: Option<[u32; 4]>,
 }
 
+/// A prize that damage removed (or replaced) applies on the server at the
+/// damage tick, but the browser keeps simulating its previous rotation,
+/// thrust and top speed until the private prize state reaches it, about one
+/// round trip later. Input up to `last_sequence` in the same life may
+/// therefore replay with `tuning_before_bits` when the current tuning cannot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct DamageMovementGrace {
+    pub(crate) life_seq: u32,
+    pub(crate) last_sequence: u16,
+    /// Thrust, top speed, rotation and recharge as raw f32 bits, in the order
+    /// of `movement_tuning_values_for_replay`.
+    pub(crate) tuning_before_bits: [u32; 4],
+}
+
 pub(crate) const MAX_PENDING_PRIZE_EFFECT_APPLICATIONS: usize = 64;
 pub(crate) const MAX_PRIZE_EFFECT_APPLICATION_TERMINALS: usize = 128;
 
@@ -1454,6 +1472,10 @@ pub(crate) struct ServerState {
     /// Phase 1 diagnostic counters. These describe immutable collision
     /// witnesses only and never participate in admission or damage authority.
     pub(crate) collision_witnesses_total: u64,
+    /// Scheduling observations, never admission inputs. Counts retries, not unique hits.
+    pub(crate) damage_readiness_waits_total: u64,
+    pub(crate) damage_conflict_waits_total: u64,
+    pub(crate) damage_independent_commits_total: u64,
     /// Bounded debug/QA evidence only. No gameplay path reads this registry.
     pub(crate) qa_traces: crate::qa_trace::QaTraceRegistry,
     pub(crate) next_hidden_prize_spawn_at_tick: Option<u32>,
@@ -2776,6 +2798,7 @@ impl ServerState {
             positions_received = client.positions_received,
             "session_audit"
         );
+        crate::session_summary::log(&client);
         let retired_session = PlayerSessionIdentity::new(player_id, client.session_id);
         self.pending_owner_weapon_cancellations
             .remove(&retired_session);

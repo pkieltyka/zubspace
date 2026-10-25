@@ -110,7 +110,13 @@ to the host. `scripts/deploy.sh` and `scripts/remote.sh` drive it.
    fixed allowlist of `/v1/*` paths to the game server, so the page needs no
    URL parameters.
 2. **Menu.** The menu lists zones from `/v1/zones`, checks `/v1/players` before
-   joining, and prefetches the selected zone's files and the WASM.
+   joining, and prefetches the selected zone's files and the WASM. On a browser's
+   first Play/Enter submission, the keyboard guide opens before admission and
+   signaling. “OK, I’m ready” continues the join; the acknowledgement is saved
+   in localStorage once gameplay is reached. Dismissing it returns to the menu.
+   Failed joins retain the acknowledgement only on the current page. If storage is unavailable, the
+   acknowledgement lasts for the current page. Explicit name/auto-join URLs
+   retain their direct-entry behavior.
 3. **Signaling.** The page creates an `RTCPeerConnection` with three
    DataChannels, gathers ICE candidates, and POSTs the SDP offer as JSON to
    `/v1/rtc/offer`; the HTTP response carries the answer. All game traffic

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { acknowledgeControlsWelcome } from "../../tools/browser_controls_welcome.mjs";
 import { fetchGameStatusResponse } from "../../tools/game_status.mjs";
 import fs from "node:fs";
 import { freePort, startRealServer, startStaticServer, stopProcess, waitForServerListening } from "../../tools/browser_firefox_rtc_smoke.mjs";
@@ -37,6 +38,7 @@ async function main() {
           await send("Input.insertText", { text: i === 0 ? "qualitynormal" : "qualityslow" });
           await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
           await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
+          await acknowledgeControlsWelcome(send, evaluate);
         },
       }));
     }

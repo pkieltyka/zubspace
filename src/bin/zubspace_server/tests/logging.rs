@@ -119,21 +119,38 @@ fn deployed_log_settings(toml: &str) -> (ServerLogLevel, Targets) {
 }
 
 #[test]
-fn prod_drops_per_event_lines_and_dev_keeps_them() {
+fn prod_keeps_combat_lines_and_drops_acknowledgements_while_dev_keeps_all() {
     let (_, prod) =
         deployed_log_settings(include_str!("../../../../deploy/prod/zubspace_server.toml"));
     let (_, dev) =
         deployed_log_settings(include_str!("../../../../deploy/dev/zubspace_server.toml"));
     for target in crate::log_targets::PER_EVENT_TARGETS {
         let module = target.rsplit_once("::").unwrap().0;
-        assert!(
-            !prod.would_enable(target, &tracing::Level::INFO),
+        let acknowledgement = target.ends_with("::acks");
+        assert_eq!(
+            prod.would_enable(target, &tracing::Level::INFO),
+            !acknowledgement,
             "{target}"
         );
         assert!(prod.would_enable(target, &tracing::Level::WARN), "{target}");
         assert!(prod.would_enable(module, &tracing::Level::INFO), "{module}");
         assert!(dev.would_enable(target, &tracing::Level::DEBUG), "{target}");
     }
+    // Low-volume DEBUG modules are on in prod; per-packet connection DEBUG is not.
+    for module in [
+        "zubspace_server::observability",
+        "zubspace_server::arena::positions",
+        "zubspace_server::server_damage",
+        "zubspace_server::player_events::prizes",
+        "zubspace_server::connection_quality",
+    ] {
+        assert!(
+            prod.would_enable(module, &tracing::Level::DEBUG),
+            "{module}"
+        );
+    }
+    assert!(!prod.would_enable("zubspace_server::connection", &tracing::Level::DEBUG));
+    assert!(!prod.would_enable("zubspace_server::hidden_prizes", &tracing::Level::DEBUG));
 }
 
 #[test]

@@ -285,3 +285,24 @@ process only (geckodriver's `moz:firefoxOptions.env`), as a JSON object or a
 `;`- or newline-separated `KEY=VALUE` list. Use it for browser diagnostics
 such as `MOZ_PROFILER_*`, which break geckodriver when set in its own
 environment.
+
+## Slow-client combat isolation
+
+`make test-e2e-slow-client-isolation` runs four real Chrome clients in Chaos on
+two declared, hull-clear authored gun lines, using normal keyboard shots and
+unchanged weapon tuning. It verifies two healthy hits while the other fight
+has an exact pending, unready collision; then it releases that collision and
+requires one normal damage result. Both healthy perspectives must submit moving
+projectile draws and receive exact damage receipts. Commit timing is checked
+against collision/presentation eligibility, using 100 Hz Continuum ticks.
+
+The debug-only server seam uses
+`ZUBSPACE_SERVER_TEST_PRESENTATION_HOLD_PLAYER` and an absolute
+`ZUBSPACE_SERVER_TEST_PRESENTATION_HOLD_FILE`. While that file exists, the named
+recipient's projectile presentation envelopes stay in their real outbound event
+queue before normal emission; other recipients, snapshots and quality probes
+continue. The seam never fabricates receipts or readiness. Its hold is capped at
+10 seconds and must be explicitly released before rearming. Release builds do
+not compile the seam. The test removes the file even on failure and verifies
+normal RTC/ingress cleanup. This is a targeted stalled-presentation scenario,
+not proof of every real UDP loss or congestion profile.

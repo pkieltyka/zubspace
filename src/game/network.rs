@@ -2627,7 +2627,7 @@ impl Game {
                         } else if self
                             .quality_return_recovery
                             .as_ref()
-                            .is_some_and(|attempt| attempt.is_ready())
+                            .is_some_and(|attempt| !attempt.is_stopped())
                         {
                             self.push_notification("Your connection is still being checked. Stay in spectator, then use ESC and select a ship to try again shortly.", ORANGE);
                         }

@@ -40,10 +40,14 @@ impl Game {
                 self.self_correction_count,
                 self.step_authority_ready(),
             );
+            let scope = self.client_authority.view().scope;
+            crate::browser_metrics::publish_connection_scope(
+                scope.server_session_id.unwrap_or(0),
+                scope.arena_stream_id.unwrap_or(0),
+            );
             let now = get_time();
             if LAST_PLAYER_REPORT.with(|last| now - last.get() >= 5.0) {
                 LAST_PLAYER_REPORT.with(|last| last.set(now));
-                let scope = self.client_authority.view().scope;
                 if let (Some(server), Some(arena), Some(life)) = (
                     scope.server_session_id,
                     scope.arena_stream_id,
