@@ -45,6 +45,8 @@ const RECHARGE_PRIZE_PROTOCOL_ID: i16 = 1;
 /// for any realistic reliable-mirror delay (64 frames ≈ 1 s at 60 Hz);
 /// anything older is rejected as stale.
 const WEAPON_SEQUENCE_WINDOW: u16 = 64;
+/// A quarter of the u16 sequence space: about 4.5 minutes at 60 Hz.
+const WEAPON_SEQUENCE_MAX_LAG: u16 = 0x4000;
 const POSITION_VALIDATION_ANCHOR_RETENTION_TICKS: u32 = 10 * 60 * 100;
 
 impl ClientHandle {
@@ -345,6 +347,29 @@ impl ClientHandle {
         }
         // Older than the window: nothing to record — `weapon_sequence_seen`
         // already reports stale sequences as seen.
+    }
+
+    /// Positions keep arriving while a player holds fire. Past the u16 half
+    /// range (about nine minutes at 60 Hz), a fresh shot would compare as
+    /// older than `latest_weapon_seq` and be dropped as a replay. Keep the
+    /// window at most `WEAPON_SEQUENCE_MAX_LAG` behind the admitted position
+    /// stream. Sliding forward marks nothing consumed and can only make more
+    /// sequences report as seen, never fewer.
+    pub(crate) fn keep_weapon_window_near(&mut self, position_sequence: u16) {
+        let Some(latest) = self.latest_weapon_seq else {
+            return;
+        };
+        let lag = position_sequence.wrapping_sub(latest);
+        if lag <= WEAPON_SEQUENCE_MAX_LAG || lag >= 0x8000 {
+            return;
+        }
+        let shift = lag - WEAPON_SEQUENCE_MAX_LAG;
+        self.weapon_seq_mask = if u32::from(shift) >= u64::BITS {
+            0
+        } else {
+            self.weapon_seq_mask << shift
+        };
+        self.latest_weapon_seq = Some(position_sequence.wrapping_sub(WEAPON_SEQUENCE_MAX_LAG));
     }
 
     pub(crate) fn portal_action_seen(&self, action_id: u32) -> bool {

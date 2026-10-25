@@ -2252,7 +2252,16 @@ fn accept_position_relay_with_spawn_deferral(
         // From this point onward the position cannot be rejected by movement,
         // hull, path, or witness admission. Consume discontinuity authority
         // transactionally now; prospective replay above remained read-only.
+        if client_position_sequence_advances(sender.last_position_sequence, client_sequence) {
+            sender.keep_weapon_window_near(client_sequence);
+        }
         if snapshot.weapon != 0 && sender.weapon_sequence_seen(client_sequence) {
+            debug!(
+                player_id,
+                client_sequence,
+                latest_weapon_sequence = ?sender.latest_weapon_seq,
+                "dropping position whose weapon sequence was already seen"
+            );
             return None;
         }
         if matching_warp_prize_discontinuity {
@@ -5047,6 +5056,79 @@ mod tests {
             repel_delivery_generation: repel_snapshot_id.map(|_| 1),
             warp_collectible_id: None,
         }
+    }
+
+    // Prod: a pilot fired at sequence 4440, sat in a safe zone for 9.5
+    // minutes and then bombed at 38285, 33845 sequences later. Past the u16
+    // half range the bomb compared as an ancient replay, the server dropped
+    // its position and the client's recoil forced repeated snap-backs.
+    #[test]
+    fn weapon_after_a_long_ceasefire_is_fresh_while_old_weapons_stay_seen() {
+        let last_shot = 4_440_u16;
+        let bomb = 38_285_u16;
+
+        let mut stale = test_client_handle();
+        stale.remember_weapon_sequence(last_shot);
+        assert!(
+            stale.weapon_sequence_seen(bomb),
+            "without the window following positions the bomb reads as a replay"
+        );
+
+        let mut client = test_client_handle();
+        client.remember_weapon_sequence(last_shot);
+        let mut sequence = last_shot;
+        while sequence != bomb.wrapping_sub(1) {
+            sequence = sequence.wrapping_add(1);
+            client.keep_weapon_window_near(sequence);
+        }
+        client.keep_weapon_window_near(bomb);
+        assert!(!client.weapon_sequence_seen(bomb));
+        assert!(
+            client.weapon_sequence_seen(last_shot),
+            "consumed weapons stay seen"
+        );
+        client.remember_weapon_sequence(bomb);
+        assert!(
+            client.weapon_sequence_seen(bomb),
+            "the bomb is consumed once"
+        );
+
+        // Through a full u16 epoch and beyond, a held trigger never ages a
+        // fresh shot into a replay.
+        let mut client = test_client_handle();
+        client.remember_weapon_sequence(0);
+        for step in 1..=200_000_u32 {
+            let sequence = step as u16;
+            client.keep_weapon_window_near(sequence);
+            if step % 997 == 0 {
+                assert!(!client.weapon_sequence_seen(sequence.wrapping_add(1)));
+            }
+        }
+    }
+
+    #[test]
+    fn keeping_the_weapon_window_near_positions_preserves_recent_consumption() {
+        let mut client = test_client_handle();
+        client.remember_weapon_sequence(100);
+        client.remember_weapon_sequence(98);
+        // Within the allowed lag nothing moves.
+        client.keep_weapon_window_near(100 + 0x4000);
+        assert_eq!(client.latest_weapon_seq, Some(100));
+        assert!(client.weapon_sequence_seen(98));
+        assert!(
+            !client.weapon_sequence_seen(99),
+            "an unconsumed recent mirror stays usable"
+        );
+        // A small slide keeps the consumed bits at their sequences.
+        client.keep_weapon_window_near(100 + 0x4000 + 3);
+        assert_eq!(client.latest_weapon_seq, Some(103));
+        assert!(client.weapon_sequence_seen(100));
+        assert!(client.weapon_sequence_seen(98));
+        assert!(!client.weapon_sequence_seen(101));
+        // A sequence behind the window (a reordered or forged old report)
+        // never pulls it backwards.
+        client.keep_weapon_window_near(50);
+        assert_eq!(client.latest_weapon_seq, Some(103));
     }
 
     #[test]

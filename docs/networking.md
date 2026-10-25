@@ -113,7 +113,9 @@ delay are described in [Connection quality](connection-quality.md).
 Routing rules worth knowing:
 
 - A position that fires a weapon is sent with the same bytes on all three
-  channels. The server consumes each weapon sequence at most once.
+  channels. The server consumes each weapon sequence at most once. Its
+  replay window follows the admitted position stream, so after any length of
+  time without firing the next shot still counts as new.
 - The browser drops an ordinary (non-weapon) position or input record rather
   than queue it when the game channel already holds more than 2 KiB; the next
   position carries the same input history.
