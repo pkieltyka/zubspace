@@ -1556,7 +1556,7 @@ fn accept_position_relay_with_spawn_deferral(
             log_security_reject(player_id, "position", "impossible_velocity");
             return None;
         }
-        let movement_upgrades = crate::sim_observation::movement_upgrades_for_client(sender);
+        let mut movement_upgrades = crate::sim_observation::movement_upgrades_for_client(sender);
         let existing_repel_active = sender.server_repel_until_tick.is_some_and(|until| {
             !crate::continuum::continuum_tick_reached(server_tick_at_accept, until)
         });
@@ -1579,14 +1579,14 @@ fn accept_position_relay_with_spawn_deferral(
         };
         let tail_bomb_recoil_speed = accepted_position_weapon_applies_recoil(previewed_weapon)
             .then(|| arena_ship_bomb_recoil_speed(sender.player.ship));
-        let canonical_replay =
+        let replay_with = |upgrades| {
             crate::sim_observation::replay_canonical_position_gap_with_repel_application(
                 sender,
                 map,
                 is_flagger,
                 attached_riders,
                 existing_repel_active,
-                movement_upgrades,
+                upgrades,
                 &enemy_brick_tiles,
                 client_sequence,
                 server_tick_at_accept,
@@ -1594,7 +1594,46 @@ fn accept_position_relay_with_spawn_deferral(
                 spawn_y,
                 tail_bomb_recoil_speed,
                 repel_application,
+            )
+        };
+        let replay_matches = |replay: &crate::sim_observation::CanonicalPositionReplay| {
+            let report = (
+                snapshot.canonical_state,
+                canonical_direction,
+                snapshot.x,
+                snapshot.y,
+                snapshot.velocity_x,
+                snapshot.velocity_y,
             );
+            !replay
+                .matching_exact_branch_witnesses(
+                    report.0, report.1, report.2, report.3, report.4, report.5,
+                )
+                .is_empty()
+                || replay
+                    .matching_exact_relocated_branch_witnesses(
+                        report.0, report.1, report.2, report.3, report.4, report.5,
+                    )
+                    .is_some()
+                || replay
+                    .matching_exact_wormhole_branch_witnesses(
+                        report.0, report.1, report.2, report.3, report.4, report.5,
+                    )
+                    .is_some()
+        };
+        let mut canonical_replay = replay_with(movement_upgrades);
+        // Input generated before the browser learned of a damage prize change
+        // replays with the replaced tuning (`DamageMovementGrace`).
+        if !canonical_replay.as_ref().is_some_and(replay_matches)
+            && let Some(tuning) = sender.damage_movement_grace_tuning(client_sequence)
+        {
+            let grace_upgrades = crate::sim_observation::movement_upgrades_from_tuning(tuning);
+            let grace_replay = replay_with(grace_upgrades);
+            if grace_replay.as_ref().is_some_and(replay_matches) {
+                canonical_replay = grace_replay;
+                movement_upgrades = grace_upgrades;
+            }
+        }
         // Safe-zone weapon presses emit no live weapon. Their exact logical
         // record now carries a dedicated post-step stop bit, so gap replay can
         // reproduce the action even when that intermediate position is lost.
@@ -4948,6 +4987,7 @@ mod tests {
             server_engine_shutdown_start_sequence: None,
             server_engine_shutdown_until_tick: None,
             pending_prize_effect_applications: std::collections::VecDeque::new(),
+            damage_movement_grace: None,
             prize_effect_application_terminals: std::collections::VecDeque::new(),
             server_emp_start_sequence: None,
             server_emp_until_tick: None,

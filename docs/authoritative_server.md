@@ -635,6 +635,13 @@ Damage loss runs inside the damage transaction. It removes one prize from the
 victim of a non-lethal hit, but only when the victim has bounty and less than
 full energy.
 
+A damage loss that changes rotation, thrust, speed or recharge applies on the
+server at once, while the victim's browser keeps its previous values until the
+private `PrizeState` reaches it. For input up to one measured round trip plus
+200 ms past the last input the server had received (at most one second of
+input, same life), a movement replay or turn history that fails at the new
+values is retried once at the replaced values (`DamageMovementGrace`).
+
 How the main effects apply:
 
 - **Movement upgrades** step the live `f32` value and clamp it to the ship's

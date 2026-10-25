@@ -1473,7 +1473,9 @@ fn apply_prepared_damage_prize_loss(
     prepared: PreparedDamagePrizeLoss,
 ) {
     let energy_before_prize = client.server_energy;
+    let tuning_before = client.movement_tuning_values_for_replay();
     apply_prepared_damage_prize_mutation(client, tick, prepared);
+    client.begin_damage_movement_grace(tuning_before);
     client.last_damage_prize_loss_seq = Some(damage_seq);
     client.last_damage_prize_loss_id = Some(prepared.prize_id);
     info!(
@@ -1502,6 +1504,26 @@ fn apply_prepared_damage_prize_mutation(
     } else {
         client.apply_server_prize_effect_at_tick(-prepared.prize_id, tick);
     }
+}
+
+/// Remove `prize_id` through the production damage path without the random
+/// selection, for position-admission fixtures.
+#[cfg(test)]
+pub(crate) fn apply_damage_prize_loss_for_test(
+    client: &mut crate::state::ClientHandle,
+    tick: u32,
+    damage_seq: u32,
+    prize_id: i16,
+) {
+    apply_prepared_damage_prize_loss(
+        client,
+        tick,
+        damage_seq,
+        PreparedDamagePrizeLoss {
+            prize_id,
+            replacement_prize_id: None,
+        },
+    );
 }
 
 #[cfg(test)]

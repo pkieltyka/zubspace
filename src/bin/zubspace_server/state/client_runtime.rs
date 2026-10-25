@@ -47,6 +47,15 @@ const RECHARGE_PRIZE_PROTOCOL_ID: i16 = 1;
 const WEAPON_SEQUENCE_WINDOW: u16 = 64;
 /// A quarter of the u16 sequence space: about 4.5 minutes at 60 Hz.
 const WEAPON_SEQUENCE_MAX_LAG: u16 = 0x4000;
+/// After a damage prize change, the browser keeps its previous movement
+/// tuning for about one round trip; this margin covers applying the private
+/// prize state plus frame and send jitter.
+const DAMAGE_MOVEMENT_GRACE_MARGIN_MS: f64 = 200.0;
+/// Round trip assumed before connection quality has a reading: the prod and
+/// dev forced-spectator limit.
+const DAMAGE_MOVEMENT_GRACE_UNMEASURED_RTT_MS: f64 = 400.0;
+/// Never more than one second of 60 Hz input.
+const DAMAGE_MOVEMENT_GRACE_MAX_STEPS: u16 = 60;
 const POSITION_VALIDATION_ANCHOR_RETENTION_TICKS: u32 = 10 * 60 * 100;
 
 impl ClientHandle {
@@ -152,6 +161,77 @@ impl ClientHandle {
                 self.server_rotation_per_second,
                 self.server_recharge_per_second,
             ))
+    }
+
+    /// The replay tuning a damage prize change replaced, while input at
+    /// `sequence` may still have been generated without knowing of it.
+    pub(crate) fn damage_movement_grace_tuning(
+        &self,
+        sequence: u16,
+    ) -> Option<(f32, f32, f32, f32)> {
+        let grace = self
+            .damage_movement_grace
+            .filter(|grace| grace.life_seq == self.life_seq)?;
+        // Wrap-safe `sequence <= last_sequence`.
+        (grace.last_sequence.wrapping_sub(sequence) < (1 << 15)).then(|| {
+            let bits = grace.tuning_before_bits;
+            (
+                f32::from_bits(bits[0]),
+                f32::from_bits(bits[1]),
+                f32::from_bits(bits[2]),
+                f32::from_bits(bits[3]),
+            )
+        })
+    }
+
+    /// Damage has just changed this player's prizes. If that changed the
+    /// replay tuning from `before`, accept `before` for input the browser may
+    /// generate during the next round trip, while the private prize state is
+    /// still on its way. The window is bounded by the measured RTT.
+    pub(crate) fn begin_damage_movement_grace(&mut self, before: (f32, f32, f32, f32)) {
+        let bits = |tuning: (f32, f32, f32, f32)| {
+            [
+                tuning.0.to_bits(),
+                tuning.1.to_bits(),
+                tuning.2.to_bits(),
+                tuning.3.to_bits(),
+            ]
+        };
+        let Some(last_input) = self.last_input_seq else {
+            return;
+        };
+        if bits(self.movement_tuning_values_for_replay()) == bits(before) {
+            return;
+        }
+        let rtt_ms = self
+            .connection_quality
+            .as_ref()
+            .and_then(|shared| {
+                shared
+                    .lock()
+                    .expect("session quality lock poisoned")
+                    .reading
+                    .and_then(|reading| reading.average_rtt_ms)
+            })
+            .unwrap_or(DAMAGE_MOVEMENT_GRACE_UNMEASURED_RTT_MS);
+        let steps = ((rtt_ms + DAMAGE_MOVEMENT_GRACE_MARGIN_MS) * 60.0 / 1000.0).ceil();
+        let steps = (steps as u16).min(DAMAGE_MOVEMENT_GRACE_MAX_STEPS);
+        let mut grace = crate::state::DamageMovementGrace {
+            life_seq: self.life_seq,
+            last_sequence: last_input.wrapping_add(steps),
+            tuning_before_bits: bits(before),
+        };
+        // A second change inside an open window keeps the browser's oldest
+        // tuning and the later end; intermediate tuning is not retried.
+        if let Some(open) = self.damage_movement_grace
+            && self.damage_movement_grace_tuning(last_input).is_some()
+        {
+            grace.tuning_before_bits = open.tuning_before_bits;
+            if open.last_sequence.wrapping_sub(grace.last_sequence) < (1 << 15) {
+                grace.last_sequence = open.last_sequence;
+            }
+        }
+        self.damage_movement_grace = Some(grace);
     }
 
     pub(crate) fn allocate_realtime_event_id(&mut self) -> u32 {

@@ -125,6 +125,7 @@ pub(crate) fn register_connection_with_sender_in_state_at_tick(
             server_engine_shutdown_start_sequence: None,
             server_engine_shutdown_until_tick: None,
             pending_prize_effect_applications: std::collections::VecDeque::new(),
+            damage_movement_grace: None,
             prize_effect_application_terminals: std::collections::VecDeque::new(),
             server_emp_start_sequence: None,
             server_emp_until_tick: None,

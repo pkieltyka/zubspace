@@ -594,6 +594,9 @@ pub(crate) struct ClientHandle {
     pub(crate) server_engine_shutdown_until_tick: Option<u32>,
     pub(crate) pending_prize_effect_applications:
         std::collections::VecDeque<PendingPrizeEffectApplication>,
+    /// Movement tuning a damage prize change replaced, for input the browser
+    /// generated before it could have learned of the change.
+    pub(crate) damage_movement_grace: Option<DamageMovementGrace>,
     pub(crate) prize_effect_application_terminals:
         std::collections::VecDeque<crate::prize_application::PrizeEffectAccepted>,
     pub(crate) server_emp_start_sequence: Option<u16>,
@@ -1300,6 +1303,20 @@ pub(crate) struct PendingPrizeEffectApplication {
     /// replay must continue using these raw f32 values. Bits keep this state
     /// Eq/copyable and preserve the precise browser/server arithmetic contract.
     pub(crate) movement_tuning_before_bits: Option<[u32; 4]>,
+}
+
+/// A prize that damage removed (or replaced) applies on the server at the
+/// damage tick, but the browser keeps simulating its previous rotation,
+/// thrust and top speed until the private prize state reaches it, about one
+/// round trip later. Input up to `last_sequence` in the same life may
+/// therefore replay with `tuning_before_bits` when the current tuning cannot.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct DamageMovementGrace {
+    pub(crate) life_seq: u32,
+    pub(crate) last_sequence: u16,
+    /// Thrust, top speed, rotation and recharge as raw f32 bits, in the order
+    /// of `movement_tuning_values_for_replay`.
+    pub(crate) tuning_before_bits: [u32; 4],
 }
 
 pub(crate) const MAX_PENDING_PRIZE_EFFECT_APPLICATIONS: usize = 64;
