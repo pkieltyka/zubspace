@@ -664,6 +664,28 @@ pub(crate) fn metrics(state: &ServerState, started_at: Instant) -> String {
             total.load(std::sync::atomic::Ordering::Relaxed)
         );
     }
+    for (name, help, total) in [
+        (
+            "zubspace_damage_readiness_waits_total",
+            "Damage scheduling attempts deferred by recipient presentation readiness.",
+            state.damage_readiness_waits_total,
+        ),
+        (
+            "zubspace_damage_conflict_waits_total",
+            "Damage scheduling attempts deferred by an older conflicting transaction.",
+            state.damage_conflict_waits_total,
+        ),
+        (
+            "zubspace_damage_independent_commits_total",
+            "Damage transactions committed while an older independent transaction waited.",
+            state.damage_independent_commits_total,
+        ),
+    ] {
+        let _ = writeln!(
+            out,
+            "# HELP {name} {help}\n# TYPE {name} counter\n{name} {total}"
+        );
+    }
     t.snapshot_ack.prometheus("zubspace_snapshot_ack_round_trip_seconds", "Snapshot emission to received codec acknowledgement; includes network and browser scheduling, not application receipt or input-to-photon latency.", &mut out);
     t.browser_ice_rtt.prometheus(
         "zubspace_browser_ice_round_trip_seconds",

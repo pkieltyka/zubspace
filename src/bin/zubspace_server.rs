@@ -115,6 +115,9 @@ mod portal_placement;
 mod portal_warp;
 #[path = "../protocol/prize_application.rs"]
 mod prize_application;
+#[cfg(debug_assertions)]
+#[path = "zubspace_server/qa_presentation_hold.rs"]
+mod qa_presentation_hold;
 #[path = "zubspace_server/qa_trace.rs"]
 mod qa_trace;
 #[path = "../protocol/qa_trace.rs"]

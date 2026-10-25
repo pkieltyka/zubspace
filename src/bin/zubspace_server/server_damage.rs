@@ -389,7 +389,7 @@ fn damage_shooter_context(
     Some((runtime, shooter.player.frequency, 0, shooter.player.ship))
 }
 
-/// Mutable authority outcome staged immediately before one FIFO transaction
+/// Mutable authority outcome staged immediately before one ordered transaction
 /// reserves delivery. Collision geometry, damage, identities, and recipients
 /// remain frozen in `PreparedDamageHit`; energy/lethality intentionally derive
 /// from the exact predecessor produced by earlier committed transactions.
@@ -487,6 +487,21 @@ impl PreparedDamageTransaction {
                 .bot_hits
                 .iter()
                 .any(|prepared| prepared.victim_runtime.player_id() == player_id)
+    }
+
+    /// Conservative conflict set: retain order across any shared shooter or
+    /// primary/splash victim, including bots and predecessor/successor lives.
+    pub(crate) fn conflict_player_ids(&self) -> Vec<u16> {
+        let mut actors = vec![self.shooter_runtime.player_id()];
+        actors.extend(self.hits.iter().map(|hit| hit.victim_runtime.player_id()));
+        actors.extend(
+            self.bot_hits
+                .iter()
+                .map(|hit| hit.victim_runtime.player_id()),
+        );
+        actors.sort_unstable();
+        actors.dedup();
+        actors
     }
 
     pub(crate) fn shooter_runtime(&self) -> crate::authority_identity::PlayerRuntimeIdentity {

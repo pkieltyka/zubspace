@@ -1455,6 +1455,10 @@ pub(crate) struct ServerState {
     /// Phase 1 diagnostic counters. These describe immutable collision
     /// witnesses only and never participate in admission or damage authority.
     pub(crate) collision_witnesses_total: u64,
+    /// Scheduling observations, never admission inputs. Counts retries, not unique hits.
+    pub(crate) damage_readiness_waits_total: u64,
+    pub(crate) damage_conflict_waits_total: u64,
+    pub(crate) damage_independent_commits_total: u64,
     /// Bounded debug/QA evidence only. No gameplay path reads this registry.
     pub(crate) qa_traces: crate::qa_trace::QaTraceRegistry,
     pub(crate) next_hidden_prize_spawn_at_tick: Option<u32>,

@@ -982,3 +982,7 @@ test-e2e-spawn-idle: test-snapshot-parser build-client build-server
 .PHONY: test-e2e-thor-proximity
 test-e2e-thor-proximity: test-snapshot-parser build-client build-server
 	ZUBSPACE_SMOKE_LOG_LEVEL=info ZUBSPACE_E2E_HEADLESS=0 node tests/e2e/thor_proximity.mjs
+
+.PHONY: test-e2e-slow-client-isolation
+test-e2e-slow-client-isolation:
+	ZUBSPACE_SMOKE_LOG_LEVEL=debug node tests/e2e/slow_client_isolation.mjs

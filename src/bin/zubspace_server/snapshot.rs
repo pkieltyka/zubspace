@@ -2076,6 +2076,13 @@ fn emit_snapshots_for_tick_inner_at_tick(
         let mut sending = Vec::new();
         let mut packets = Vec::new();
         while let Some(envelope) = realtime_events.queue.pop_front() {
+            #[cfg(debug_assertions)]
+            if projectile_presentation_identity(envelope.payload).is_some()
+                && crate::qa_presentation_hold::holds(&client.player.name)
+            {
+                realtime_events.queue.push_front(envelope);
+                break;
+            }
             let packet = crate::realtime_event::AuthenticatedRealtimeEvent {
                 server_session_id: crate::wire::server_session_id(),
                 arena_stream_id: client.arena_stream_id,

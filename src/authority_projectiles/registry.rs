@@ -14,6 +14,8 @@ use crate::continuum_weapon::{
 pub(crate) const MAX_PENDING_HITS_PER_OWNER: usize = 128;
 pub(crate) const MAX_PENDING_HITS_TOTAL: usize = 3_072;
 pub(crate) const MAX_PENDING_HIT_RETRIES_PER_TICK: usize = 256;
+// A single unready victim cannot fill the arena's pending collision storage.
+const MAX_PENDING_HITS_PER_VICTIM: usize = 256;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct ProjectileRegistry {
@@ -179,16 +181,31 @@ impl ProjectileRegistry {
         }
     }
 
-    /// Return one bounded FIFO prefix for immutable damage-transaction
-    /// preparation. This deliberately includes collisions whose harmful
-    /// readiness is still closed: geometry, splash membership, and damage
-    /// anchors must freeze at collision time, while application waits.
+    /// Stable bounded collision ledger, including unready roots. The server
+    /// freezes new transactions before scheduling by their full victim sets.
     pub(crate) fn pending_hits_for_preparation(&self) -> Vec<ProjectileHit> {
         self.pending_hits
             .iter()
-            .take(MAX_PENDING_HIT_RETRIES_PER_TICK)
             .map(|pending| pending.hit)
             .collect()
+    }
+
+    fn harmful_candidates(&self, eligible: impl Fn(&ProjectileHit) -> bool) -> Vec<ProjectileHit> {
+        let mut blocked = std::collections::HashSet::new();
+        let mut hits = Vec::new();
+        for pending in &self.pending_hits {
+            let hit = pending.hit;
+            let actors = [hit.owner_identity(), hit.victim_identity()];
+            if actors.iter().any(|actor| blocked.contains(actor)) || !eligible(&hit) {
+                blocked.extend(actors);
+                continue;
+            }
+            hits.push(hit);
+            if hits.len() == MAX_PENDING_HIT_RETRIES_PER_TICK {
+                break;
+            }
+        }
+        hits
     }
 
     pub(crate) fn len(&self) -> usize {
@@ -883,59 +900,17 @@ impl ProjectileRegistry {
                     !crate::continuum::continuum_tick_reached(current_tick, expiry_tick)
                 })
         });
-        let last = match self.last_step_tick.replace(current_tick) {
-            Some(prev) => prev,
-            None => {
-                return self
-                    .pending_hits
-                    .iter()
-                    .take(MAX_PENDING_HIT_RETRIES_PER_TICK)
-                    .take_while(|pending| harmful_eligibility(&pending.hit))
-                    .map(|pending| pending.hit)
-                    .collect();
-            }
+        let Some(last) = self.last_step_tick.replace(current_tick) else {
+            return self.harmful_candidates(&harmful_eligibility);
         };
         let dt_ticks = crate::continuum::continuum_tick_elapsed(current_tick, last);
         if dt_ticks == 0 {
-            return self
-                .pending_hits
-                .iter()
-                .take(MAX_PENDING_HIT_RETRIES_PER_TICK)
-                .take_while(|pending| harmful_eligibility(&pending.hit))
-                .map(|pending| pending.hit)
-                .collect();
+            return self.harmful_candidates(&harmful_eligibility);
         }
-        // Keep a prior cue through zero-time queries. Only a real new physics
-        // step can decide which capacity pauses have resumed.
         self.capacity_paused.clear();
-        // One server tick may prepare/retry at most 256 immutable damage
-        // transactions. The global pending vector is one authority FIFO: its
-        // oldest prefix consumes the work budget first. A new collision can
-        // enter this batch only when every older pending hit is included, and
-        // is appended behind all of them. Per-owner admission caps may delay a
-        // new collision but can never let it overtake older authority.
-        let retry_window = self
-            .pending_hits
-            .len()
-            .min(MAX_PENDING_HIT_RETRIES_PER_TICK);
-        let retry_limit = self
-            .pending_hits
-            .iter()
-            .take(retry_window)
-            .take_while(|pending| harmful_eligibility(&pending.hit))
-            .count();
-        let mut hits = self
-            .pending_hits
-            .iter()
-            .take(retry_limit)
-            .map(|pending| pending.hit)
-            .collect::<Vec<_>>();
-        let mut harmful_barrier = retry_limit < self.pending_hits.len();
-        let new_hit_budget = if !harmful_barrier && retry_limit == self.pending_hits.len() {
-            MAX_PENDING_HIT_RETRIES_PER_TICK.saturating_sub(retry_limit)
-        } else {
-            0
-        };
+        // Physics discovery and damage retries have separate bounded budgets.
+        // An unready collision is not exhaustion of the new-collision budget.
+        let new_hit_budget = MAX_PENDING_HIT_RETRIES_PER_TICK;
         let mut new_pending_hits = Vec::new();
         let mut new_wall_explosions = Vec::new();
         let mut wall_explosions_by_owner = self.pending_wall_explosions.iter().fold(
@@ -954,6 +929,13 @@ impl ProjectileRegistry {
                 counts
             },
         );
+        let mut pending_by_victim = self.pending_hits.iter().fold(
+            std::collections::HashMap::<_, usize>::new(),
+            |mut counts, pending| {
+                *counts.entry(pending.hit.victim_identity()).or_default() += 1;
+                counts
+            },
+        );
         // Mark projectiles that despawned mid-step (hit a wall with no
         // bounces left) so they get removed by the retain pass below.
         let mut despawned: Vec<usize> = Vec::new();
@@ -967,7 +949,7 @@ impl ProjectileRegistry {
             .iter()
             .map(|player| (player.identity(), player))
             .collect();
-        for (index, projectile) in self.records.iter_mut().enumerate() {
+        'projectiles: for (index, projectile) in self.records.iter_mut().enumerate() {
             if pending_groups.contains(&projectile.shot_group_id) {
                 continue;
             }
@@ -996,6 +978,7 @@ impl ProjectileRegistry {
                 self.capacity_paused.insert(projectile.id);
                 continue;
             }
+            let before_step = *projectile;
             let weapon_type = continuum_weapon_type(projectile.weapon_data);
             let captured_source = projectile.presentation_source.filter(|source| {
                 source.source_player_id == projectile.owner_id
@@ -1194,6 +1177,18 @@ impl ProjectileRegistry {
                             y: projectile.y,
                             tick: current_tick,
                         };
+                        if pending_by_victim
+                            .get(&hit.victim_identity())
+                            .copied()
+                            .unwrap_or(0)
+                            >= MAX_PENDING_HITS_PER_VICTIM
+                        {
+                            *projectile = before_step;
+                            despawned.retain(|&removed| removed != index);
+                            self.capacity_paused.insert(projectile.id);
+                            continue 'projectiles;
+                        }
+                        *pending_by_victim.entry(hit.victim_identity()).or_default() += 1;
                         pending_total += 1;
                         *pending_by_owner
                             .entry(projectile.owner_identity())
@@ -1202,11 +1197,6 @@ impl ProjectileRegistry {
                         if !harmful {
                             new_harmful_readiness_deferrals =
                                 new_harmful_readiness_deferrals.saturating_add(1);
-                        }
-                        if !harmful_barrier && harmful {
-                            hits.push(hit);
-                        } else {
-                            harmful_barrier = true;
                         }
                         new_pending_hits.push(PendingProjectileHit {
                             hit,
@@ -1329,6 +1319,18 @@ impl ProjectileRegistry {
                     y: projectile.y,
                     tick: current_tick,
                 };
+                if pending_by_victim
+                    .get(&hit.victim_identity())
+                    .copied()
+                    .unwrap_or(0)
+                    >= MAX_PENDING_HITS_PER_VICTIM
+                {
+                    *projectile = before_step;
+                    despawned.retain(|&removed| removed != index);
+                    self.capacity_paused.insert(projectile.id);
+                    continue 'projectiles;
+                }
+                *pending_by_victim.entry(hit.victim_identity()).or_default() += 1;
                 pending_total += 1;
                 *pending_by_owner
                     .entry(projectile.owner_identity())
@@ -1352,11 +1354,6 @@ impl ProjectileRegistry {
                 if !harmful {
                     new_harmful_readiness_deferrals =
                         new_harmful_readiness_deferrals.saturating_add(1);
-                }
-                if !harmful_barrier && harmful {
-                    hits.push(hit);
-                } else {
-                    harmful_barrier = true;
                 }
                 // The sort_unstable + dedup pass below tolerates a
                 // duplicate push from the wall-despawn branch above,
@@ -1443,6 +1440,18 @@ impl ProjectileRegistry {
                         y: projectile.y,
                         tick: current_tick,
                     };
+                    if pending_by_victim
+                        .get(&hit.victim_identity())
+                        .copied()
+                        .unwrap_or(0)
+                        >= MAX_PENDING_HITS_PER_VICTIM
+                    {
+                        *projectile = before_step;
+                        despawned.retain(|&removed| removed != index);
+                        self.capacity_paused.insert(projectile.id);
+                        continue 'projectiles;
+                    }
+                    *pending_by_victim.entry(hit.victim_identity()).or_default() += 1;
                     pending_total += 1;
                     *pending_by_owner
                         .entry(projectile.owner_identity())
@@ -1451,11 +1460,6 @@ impl ProjectileRegistry {
                     if !harmful {
                         new_harmful_readiness_deferrals =
                             new_harmful_readiness_deferrals.saturating_add(1);
-                    }
-                    if !harmful_barrier && harmful {
-                        hits.push(hit);
-                    } else {
-                        harmful_barrier = true;
                     }
                     new_pending_hits.push(PendingProjectileHit {
                         hit,
@@ -1502,6 +1506,18 @@ impl ProjectileRegistry {
                             y: projectile.y,
                             tick: current_tick,
                         };
+                        if pending_by_victim
+                            .get(&hit.victim_identity())
+                            .copied()
+                            .unwrap_or(0)
+                            >= MAX_PENDING_HITS_PER_VICTIM
+                        {
+                            *projectile = before_step;
+                            despawned.retain(|&removed| removed != index);
+                            self.capacity_paused.insert(projectile.id);
+                            continue 'projectiles;
+                        }
+                        *pending_by_victim.entry(hit.victim_identity()).or_default() += 1;
                         pending_total += 1;
                         *pending_by_owner
                             .entry(projectile.owner_identity())
@@ -1510,11 +1526,6 @@ impl ProjectileRegistry {
                         if !harmful {
                             new_harmful_readiness_deferrals =
                                 new_harmful_readiness_deferrals.saturating_add(1);
-                        }
-                        if !harmful_barrier && harmful {
-                            hits.push(hit);
-                        } else {
-                            harmful_barrier = true;
                         }
                         new_pending_hits.push(PendingProjectileHit {
                             hit,
@@ -1584,7 +1595,7 @@ impl ProjectileRegistry {
             .harmful_readiness_deferrals_total
             .saturating_add(new_harmful_readiness_deferrals);
         self.record_presentation_geometry_metrics(presentation_geometry_metrics);
-        hits
+        self.harmful_candidates(harmful_eligibility)
     }
 
     /// Include secondary splash projection work performed while freezing the

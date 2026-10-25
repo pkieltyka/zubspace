@@ -1039,6 +1039,22 @@ fn server_status_snapshot(
         "threat_harmful_readiness_deferrals_total".into(),
         serde_json::json!(state.active_projectiles.harmful_readiness_deferrals_total()),
     );
+    for (name, total) in [
+        (
+            "damage_readiness_waits_total",
+            state.damage_readiness_waits_total,
+        ),
+        (
+            "damage_conflict_waits_total",
+            state.damage_conflict_waits_total,
+        ),
+        (
+            "damage_independent_commits_total",
+            state.damage_independent_commits_total,
+        ),
+    ] {
+        status.insert(name.into(), serde_json::json!(total));
+    }
     status.insert(
         "collision_witnesses_total".into(),
         serde_json::json!(state.collision_witnesses_total),

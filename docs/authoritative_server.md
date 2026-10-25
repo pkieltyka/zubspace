@@ -494,9 +494,31 @@ acknowledgements, so a client cannot extend its own immunity.
 ### 7.4 Damage transactions
 
 A detected collision is frozen as an immutable record of the impact, victims,
-anchors and damage. Pending hits wait in a FIFO, at most 128 per owner and
-3,072 in total. They commit strictly in order, so a later shot cannot overtake
-an earlier hit.
+anchors and damage. Pending hits have a stable collision-order ledger, bounded
+at 128 per owner, 256 per primary victim life and 3,072 in total. New collision
+discovery and damage commit attempts have separate 256-per-step budgets.
+Unrelated free flight continues while an older collision awaits presentation.
+
+Transactions sharing a shooter or any primary/splash victim retain their order;
+blocked dependencies propagate to later transactions involving those players.
+Independent transactions may commit while an older encounter waits for
+presentation or delivery capacity. A shared explosion remains atomic with its
+collision-time victim membership and geometry. Life/session validation and
+cleanup still own cancellation; missing presentation never grants harm.
+
+Mutable energy, lethality, prize loss and score derive at commit under the arena
+transaction gate. The shared damage/prize RNG stream advances only on successful
+commit, in actual commit order. Relative to the former arena-wide FIFO, an
+independent encounter can therefore receive an earlier random draw. The stream
+and distribution are unchanged; retries do not reserve draws or advance it.
+Replay determinism includes scheduling/readiness inputs, not just collision order.
+
+`damage_readiness_waits_total` and `damage_conflict_waits_total` count scheduling
+attempts deferred for each reason. `damage_independent_commits_total` counts
+successful commits while an older independent transaction is blocked. They are
+available in zone status and as `zubspace_`-prefixed Prometheus counters, without
+player labels. Shared CPU/locks and genuine global capacity limits remain shared
+resources; this is combat scheduling isolation, not overload immunity.
 
 The damage rules (`src/authority_damage.rs`, `src/combat.rs`,
 `server_damage.rs`):

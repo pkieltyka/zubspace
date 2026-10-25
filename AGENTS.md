@@ -688,3 +688,11 @@ Two differences that are ours by design, so do not "fix" them toward the referen
 - `make test-e2e-identity-rejoin` verifies live duplicate identity rejection,
   bounded retry exhaustion without incumbent eviction, then abrupt owned-browser
   SIGKILL and immediate profile restart with same-connection automatic recovery.
+
+- `make test-e2e-slow-client-isolation` runs four real Chrome clients on two
+  authored Chaos gun lines. It holds one victim's outbound projectile
+  presentation before emission, requires continued independent projectile draws
+  and exact damage, then releases the held collision and checks once-only
+  completion and RTC cleanup. The debug-only hold is capped at ten seconds;
+  this targeted lane is not general WAN or overload acceptance. See
+  [`docs/e2e-diagnostics.md`](docs/e2e-diagnostics.md#slow-client-combat-isolation).

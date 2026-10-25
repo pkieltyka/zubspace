@@ -584,13 +584,13 @@ fn pending_collision_caps_are_exact_fair_and_release_owned_memory() {
                 .map(|hit| hit.projectile_id)
                 .collect::<Vec<_>>(),
             fifo_ids,
-            "a full old FIFO prefix owns the complete bounded work batch"
+            "same-victim retries retain their stable bounded order"
         );
     }
     assert_eq!(
         registry.pending_hit_count(),
         MAX_PENDING_HIT_RETRIES_PER_TICK,
-        "sustained pressure cannot grow authority behind an undrained prefix"
+        "a full victim backlog cannot grow behind its undrained collisions"
     );
     let retry_batch =
         registry.step_with_proximity_distance_transactional(124, no_collision, &players, 3.0, 0);
@@ -2389,7 +2389,7 @@ fn wall_explosion_freezes_nearby_victim_outside_direct_and_proximity_hulls() {
 }
 
 #[test]
-fn harmful_readiness_freezes_one_global_collision_and_preserves_fifo_order() {
+fn harmful_readiness_preserves_fifo_for_conflicting_collisions() {
     let mut registry = ProjectileRegistry::default();
     let mut first = moving_projectile(0, 0, 1_000);
     first.id = 601;
@@ -2997,20 +2997,21 @@ fn capacity_paused_free_flight_has_a_frozen_presentation_flag() {
         }
     }
     registry.step_with_proximity_distance_transactional(100, no_collision, &players, 3.0, 0);
-    let hits =
-        registry.step_with_proximity_distance_transactional(101, no_collision, &players, 3.0, 0);
-    assert_eq!(hits.len(), MAX_PENDING_HIT_RETRIES_PER_TICK);
     let mut free = projectile(3, 2, Duration::ZERO);
     free.id = 900001;
     free.shot_group_id = 900001;
-    free.created_tick = 101;
+    free.created_tick = 100;
     free.pos_x = 1000.0;
     free.pos_y = 1000.0;
     free.x = 1000;
     free.y = 1000;
     free.precise_velocity = Some(crate::gameplay_rules::RulesVector::new(100.0, 0.0));
     registry.record(free, usize::MAX, usize::MAX);
-    registry.step_with_proximity_distance_transactional(102, no_collision, &players, 3.0, 0);
+    // Exhaust the *new* collision work budget in this step; a backlog from
+    // previous steps must no longer pause unrelated free flight.
+    let hits =
+        registry.step_with_proximity_distance_transactional(101, no_collision, &players, 3.0, 0);
+    assert_eq!(hits.len(), MAX_PENDING_HIT_RETRIES_PER_TICK);
     assert_eq!(
         registry.iter().find(|p| p.id == free.id).unwrap().pos_x,
         1000.0,
@@ -3020,7 +3021,7 @@ fn capacity_paused_free_flight_has_a_frozen_presentation_flag() {
         registry.frozen_projectile_ids().contains(&free.id),
         "a capacity-paused moving projectile must tell clients its flight is frozen"
     );
-    registry.step_with_proximity_distance_transactional(102, no_collision, &players, 3.0, 0);
+    registry.step_with_proximity_distance_transactional(101, no_collision, &players, 3.0, 0);
     assert!(
         registry.frozen_projectile_ids().contains(&free.id),
         "zero-time queries cannot clear a pause"
@@ -3038,7 +3039,7 @@ fn capacity_paused_free_flight_has_a_frozen_presentation_flag() {
         99,
         300.0,
         200.0,
-        102,
+        101,
         &owners,
         |_| Some(500),
     );
@@ -3051,7 +3052,7 @@ fn capacity_paused_free_flight_has_a_frozen_presentation_flag() {
     for hit in hits {
         assert!(registry.resolve_hit(hit.projectile_id));
     }
-    registry.step_with_proximity_distance_transactional(103, no_collision, &players, 3.0, 0);
+    registry.step_with_proximity_distance_transactional(102, no_collision, &players, 3.0, 0);
     assert!(!registry.frozen_projectile_ids().contains(&free.id));
     assert!(
         (registry.iter().find(|p| p.id == free.id).unwrap().pos_x - 1003.0).abs() < 0.001,
@@ -3161,4 +3162,129 @@ fn capacity_pause_wall_explosion_budget_preserves_then_releases_the_wall_contact
             .any(|p| p.parent.id == paused_id),
         "resuming must preserve the real wall explosion rather than fly through it"
     );
+}
+
+#[test]
+fn isolation_unready_victim_does_not_pause_unrelated_projectile() {
+    let mut registry = ProjectileRegistry::default();
+    let mut blocked = moving_projectile(0, 0, 1000);
+    blocked.id = 91001;
+    blocked.shot_group_id = 91001;
+    registry.record(blocked, 100, 1000);
+    let players = [
+        shooter_hull(1, 1, 700.0, 1000.0),
+        shooter_hull(2, 2, 1000.0, 1000.0),
+        shooter_hull(3, 3, 5000.0, 5000.0),
+    ];
+    registry.step_with_damage_geometry_and_harmful_eligibility_transactional(
+        100,
+        no_collision,
+        &players,
+        3.0,
+        150,
+        80.0,
+        |_| true,
+    );
+    registry.step_with_damage_geometry_and_harmful_eligibility_transactional(
+        101,
+        no_collision,
+        &players,
+        3.0,
+        150,
+        80.0,
+        |_| false,
+    );
+    assert_eq!(registry.pending_hit_count(), 1);
+    let mut independent = moving_projectile(1000, 0, 1000);
+    independent.id = 91002;
+    independent.shot_group_id = 91002;
+    independent.owner_id = 3;
+    independent.pos_x = 6000.0;
+    independent.pos_y = 5000.0;
+    independent.x = 6000;
+    independent.y = 5000;
+    independent.created_tick = 101;
+    registry.record(independent, 101, 1000);
+    let mut control = ProjectileRegistry::default();
+    control.record(independent, 101, 1000);
+    control.step_with_damage_geometry_and_harmful_eligibility_transactional(
+        101,
+        no_collision,
+        &players,
+        3.0,
+        150,
+        80.0,
+        |_| true,
+    );
+    registry.step_with_damage_geometry_and_harmful_eligibility_transactional(
+        102,
+        no_collision,
+        &players,
+        3.0,
+        150,
+        80.0,
+        |_| false,
+    );
+    control.step_with_damage_geometry_and_harmful_eligibility_transactional(
+        102,
+        no_collision,
+        &players,
+        3.0,
+        150,
+        80.0,
+        |_| true,
+    );
+    let blocked_x = registry.iter().find(|p| p.id == 91002).unwrap().pos_x;
+    let control_x = control.iter().find(|p| p.id == 91002).unwrap().pos_x;
+    println!(
+        "ISOLATION_PROBE blocked_x={blocked_x} control_x={control_x} pending={}",
+        registry.pending_hit_count()
+    );
+    assert_eq!(
+        blocked_x, control_x,
+        "unrelated free flight must advance despite unready damage"
+    );
+    assert!(control_x > 6000.0);
+}
+
+#[test]
+fn isolation_full_victim_backlog_preserves_a_wall_contact_without_despawning_it() {
+    let mut registry = ProjectileRegistry::default();
+    let players = [
+        shooter_hull(1, 1, 0.0, 0.0),
+        shooter_hull(2, 1, 0.0, 0.0),
+        shooter_hull(3, 1, 0.0, 0.0),
+        shooter_hull(700, 99, 500.0, 700.0),
+    ];
+    for owner in 1..=2_u16 {
+        for ordinal in 0..MAX_PENDING_HITS_PER_OWNER {
+            let mut p = projectile(owner, 2, Duration::ZERO);
+            p.id = u32::from(owner) * 1000 + ordinal as u32;
+            p.shot_group_id = u64::from(p.id);
+            p.created_tick = 100;
+            registry.record(p, usize::MAX, usize::MAX);
+        }
+    }
+    registry.step_with_proximity_distance_transactional(100, no_collision, &players, 3.0, 0);
+    registry.step_with_proximity_distance_transactional(101, no_collision, &players, 3.0, 0);
+    assert_eq!(registry.pending_hit_count(), 256);
+    let mut next = projectile(3, 2, Duration::ZERO);
+    next.id = 900001;
+    next.shot_group_id = 900001;
+    next.created_tick = 101;
+    next.precise_velocity = Some(crate::gameplay_rules::RulesVector::new(100.0, 0.0));
+    registry.record(next, usize::MAX, usize::MAX);
+    // Both wall and hull contact occur, but this victim has no pending slot.
+    registry.step_with_proximity_distance_transactional(102, |_, _| true, &players, 3.0, 0);
+    let retained = registry
+        .iter()
+        .find(|p| p.id == next.id)
+        .expect("capacity rollback must undo wall despawn too");
+    assert_eq!((retained.pos_x, retained.pos_y), (next.pos_x, next.pos_y));
+    assert_eq!(
+        registry.pending_hit_count(),
+        256,
+        "one stalled victim cannot fill global pending capacity"
+    );
+    assert!(registry.frozen_projectile_ids().contains(&next.id));
 }
