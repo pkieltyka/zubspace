@@ -74,7 +74,8 @@ Entries containing a space are log messages; the others are values of the
 | `server_tick_overrun_phases` | WARN | A tick over its budget, split into admission, bots, world and publication, snapshots and finish time; at most one per second |
 | `server connection quality window` | INFO | Per session: probe samples, average RTT and round-trip probe loss (see [connection quality](connection-quality.md)) |
 | `player_experience_window` | DEBUG | Each accepted browser report; prod enables this one target in `log_filter` |
-| `session_summary` | INFO | Per session at removal: duration, ship, kills and deaths, browser frame rate, slow and worst frames, corrections, ICE and probe RTT, probes and echoes, snap-backs, rejected positions, and weapons fired and rejected |
+| `session_summary` | INFO | Per session at removal: duration, ship, kills and deaths, browser frame rate, slow and worst frames, corrections, ICE and probe RTT, probes and echoes, snap-backs, rejected positions, weapons fired and rejected, and how often the page was hidden (`page_hidden_periods`) |
+| `page visibility changed` | INFO | The page hid or showed, pausing or resuming connection-quality measurement (see [connection quality](connection-quality.md#measurement-window)) |
 | `server weapon rejected` | INFO | A refused weapon request; `block_cause` names a block that applied before the fire rules (`bomb_safety`, `mine_limit`, `objective_ball`, `objective_lock`, `warp_bomb_lock`, or, when the shot had no verified combat view, the input's frozen `combat_view_*` receipt rejection such as `combat_view_application_too_far_behind`, else a `projectile_timeline_*` reason), else `none` |
 | `canonical_mismatch_detail` | WARN | Detail on a rejected movement replay, at most one per life per ten seconds |
 | `server zone_file_manifest_resolved` | INFO | Per join: zone files held and sent, bytes and elapsed time (see [zone file cache](zone-file-cache.md)) |

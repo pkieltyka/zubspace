@@ -4,11 +4,18 @@
 // Includes the ordinary old-session retirement window plus a fresh server
 // measurement window; this is a retry budget, not a second cooldown.
 const RECOVERY_TIMEOUT: f64 = 75.0;
+// The server judges a fresh connection only after 20 probes (one every
+// 500 ms, each judged 3 s after sending) and then 10 s of sustained health:
+// about 22.5 s after the connection is in scope. Inviting a ship selection
+// sooner only earns another refusal.
+pub(super) const FRESH_MEASUREMENT: f64 = 24.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) struct QualityReturnRecovery {
     pub(super) ship: u8,
     started_at: f64,
+    /// When the fresh connection first reached scope.
+    connected_at: Option<f64>,
     reconnected: bool,
     ready: bool,
     stopped: bool,
@@ -28,6 +35,7 @@ impl QualityReturnRecovery {
         (ship < 8 && now.is_finite()).then_some(Self {
             ship,
             started_at: now,
+            connected_at: None,
             reconnected: false,
             ready: false,
             stopped: false,
@@ -57,6 +65,13 @@ impl QualityReturnRecovery {
             "Connection recovery stopped. ESC and select a ship to retry.".into()
         } else if self.ready {
             "Reconnected. ESC and select a ship to return.".into()
+        } else if let Some(connected_at) = self.connected_at {
+            let seconds = (FRESH_MEASUREMENT - (now - connected_at).max(0.0))
+                .clamp(0.0, FRESH_MEASUREMENT)
+                .ceil() as u32;
+            format!(
+                "Reconnected. Checking your connection, ready to return in {seconds}s. Staying in spectator."
+            )
         } else {
             let elapsed = if now.is_finite() {
                 (now - self.started_at).max(0.0)
@@ -102,8 +117,11 @@ impl QualityReturnRecovery {
             return RecoveryAction::Reconnect;
         }
         if lifecycle_ready && !transition_pending {
-            self.ready = true;
-            return RecoveryAction::Ready;
+            let connected_at = *self.connected_at.get_or_insert(now);
+            if now - connected_at >= FRESH_MEASUREMENT {
+                self.ready = true;
+                return RecoveryAction::Ready;
+            }
         }
         RecoveryAction::Wait
     }
@@ -123,10 +141,14 @@ mod tests {
         assert_eq!(attempt.poll(101.0, false, true, true), RecoveryAction::Wait);
         assert_eq!(
             attempt.poll(102.0, false, true, false),
+            RecoveryAction::Wait
+        );
+        assert_eq!(
+            attempt.poll(102.0 + FRESH_MEASUREMENT, false, true, false),
             RecoveryAction::Ready
         );
         assert_eq!(
-            attempt.poll(103.0, true, true, false),
+            attempt.poll(127.0, true, true, false),
             RecoveryAction::Complete
         );
     }
@@ -143,13 +165,24 @@ mod tests {
             attempt.poll(101.0, false, false, false),
             RecoveryAction::Wait
         );
+        // In scope, but the server has not measured the fresh connection yet.
         assert_eq!(
             attempt.poll(102.0, false, true, false),
+            RecoveryAction::Wait
+        );
+        assert!(!attempt.is_ready());
+        assert!(
+            attempt
+                .progress_text(110.0)
+                .contains("ready to return in 16s")
+        );
+        assert_eq!(
+            attempt.poll(102.0 + FRESH_MEASUREMENT, false, true, false),
             RecoveryAction::Ready
         );
         // Looking away indefinitely cannot schedule a playable ship or a new
         // connection. Only a later genuine selection can obtain admission.
-        for now in [110.0, 111.0, 175.0, 3600.0] {
+        for now in [130.0, 131.0, 175.0, 3600.0] {
             assert_eq!(attempt.poll(now, false, true, false), RecoveryAction::Wait);
             assert!(attempt.is_ready());
         }
@@ -240,6 +273,13 @@ mod tests {
         );
         assert_eq!(
             attempt.poll(101.0, false, true, false),
+            RecoveryAction::Wait
+        );
+        let checking = attempt.progress_text(101.0);
+        assert!(checking.contains("Checking your connection, ready to return in 24s"));
+        assert!(checking.contains("Staying in spectator"));
+        assert_eq!(
+            attempt.poll(101.0 + FRESH_MEASUREMENT, false, true, false),
             RecoveryAction::Ready
         );
         assert!(attempt.progress_text(200.0).contains("select a ship"));

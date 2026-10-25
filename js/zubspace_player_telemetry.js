@@ -121,5 +121,19 @@
     }
     return { frame, report, reset };
   }
-  global.ZubspacePlayerTelemetry = Object.freeze({ create, createPing });
+  // 0x85: the page became hidden (1) or visible (0). A hidden page runs no
+  // frames, so it answers no connection-quality probes; the server pauses
+  // that measurement instead of reading the silence as packet loss. `scope`
+  // is the 16 bytes the game publishes: server session, then arena stream.
+  function visibilityNotice(scope, hidden) {
+    if (!(scope instanceof Uint8Array) || scope.length !== 16) return null;
+    if (scope.subarray(0, 8).every(byte => byte === 0) || scope.subarray(8).every(byte => byte === 0)) return null;
+    const packet = new Uint8Array(19);
+    packet[0] = 0x85;
+    packet[1] = 1;
+    packet.set(scope, 2);
+    packet[18] = hidden ? 1 : 0;
+    return packet;
+  }
+  global.ZubspacePlayerTelemetry = Object.freeze({ create, createPing, visibilityNotice });
 })(globalThis);

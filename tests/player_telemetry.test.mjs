@@ -186,3 +186,19 @@ test("a stats result delayed by a page pause cannot resurrect stale ping", async
   assert.equal(ping(),-1);
   assert.equal(ping.stats(),null);
 });
+
+test("page visibility notices carry the published scope in the server's 0x85 framing", () => {
+  const scope = new Uint8Array(16);
+  const view = new DataView(scope.buffer);
+  view.setBigUint64(0, 0x0102030405060708n, true);
+  view.setBigUint64(8, 7n, true);
+  const hidden = ZubspacePlayerTelemetry.visibilityNotice(scope, true);
+  assert.deepEqual([...hidden], [0x85, 1, 8, 7, 6, 5, 4, 3, 2, 1, 7, 0, 0, 0, 0, 0, 0, 0, 1]);
+  assert.equal(ZubspacePlayerTelemetry.visibilityNotice(scope, false)[18], 0);
+  // No scope yet, or half of one, sends nothing rather than an unscoped notice.
+  assert.equal(ZubspacePlayerTelemetry.visibilityNotice(null, true), null);
+  assert.equal(ZubspacePlayerTelemetry.visibilityNotice(new Uint8Array(16), true), null);
+  assert.equal(ZubspacePlayerTelemetry.visibilityNotice(scope.slice(0, 15), true), null);
+  const noStream = scope.slice(); noStream.fill(0, 8);
+  assert.equal(ZubspacePlayerTelemetry.visibilityNotice(noStream, true), null);
+});

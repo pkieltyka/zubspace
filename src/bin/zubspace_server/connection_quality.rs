@@ -22,6 +22,47 @@ const MAX_SAMPLES: usize = 64;
 const SUSTAINED: Duration = Duration::from_secs(10);
 const COOLDOWN: Duration = Duration::from_secs(60);
 const SERVER_STALL: Duration = Duration::from_secs(1);
+/// A hidden page draws no frames and sends no positions. More than about a
+/// second of them while "hidden" (beyond those in flight when the page hid)
+/// shows the page is playing, and the claim is voided.
+const HIDDEN_GAMEPLAY_LIMIT: u32 = 60;
+
+/// Client-originated `0x85`: the page became hidden (1) or visible (0). A
+/// hidden browser page runs no frames, so it answers no probes, and that
+/// silence is not path loss. Visibility only pauses measurement; it never
+/// lifts a hold, grants play or supplies a sample.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct PageVisibilityNotice {
+    pub(crate) server_session_id: u64,
+    pub(crate) arena_stream_id: u64,
+    pub(crate) hidden: bool,
+}
+
+impl PageVisibilityNotice {
+    pub(crate) const TYPE: u8 = 0x85;
+    pub(crate) const LEN: usize = 19;
+
+    pub(crate) fn parse(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() != Self::LEN || bytes[0] != Self::TYPE || bytes[1] != 1 || bytes[18] > 1 {
+            return None;
+        }
+        let notice = Self {
+            server_session_id: u64::from_le_bytes(bytes[2..10].try_into().unwrap()),
+            arena_stream_id: u64::from_le_bytes(bytes[10..18].try_into().unwrap()),
+            hidden: bytes[18] == 1,
+        };
+        (notice.server_session_id != 0 && notice.arena_stream_id != 0).then_some(notice)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn encode(self) -> Vec<u8> {
+        let mut bytes = vec![Self::TYPE, 1];
+        bytes.extend(self.server_session_id.to_le_bytes());
+        bytes.extend(self.arena_stream_id.to_le_bytes());
+        bytes.push(u8::from(self.hidden));
+        bytes
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct ConnectionQualityPolicy {
@@ -355,12 +396,62 @@ pub(crate) fn sustained_health_now(
     })
 }
 
+/// An authenticated `0x85` from this session's own page, for its current
+/// arena stream. Malformed or out-of-scope notices are ignored.
+pub(crate) fn receive_page_visibility(
+    state: &mut crate::state::ServerState,
+    identity: crate::authority_identity::PlayerSessionIdentity,
+    packet: &[u8],
+    now: Instant,
+) {
+    let Some(notice) = PageVisibilityNotice::parse(packet) else {
+        return;
+    };
+    let Some(client) = state.clients.get_mut(&identity.player_id) else {
+        return;
+    };
+    if !client.joined
+        || client.session_id != identity.session_id
+        || notice.server_session_id != crate::wire::server_session_id()
+        || notice.arena_stream_id != client.arena_stream_id
+    {
+        return;
+    }
+    let Some(shared) = client.connection_quality.as_ref() else {
+        return;
+    };
+    if !shared
+        .lock()
+        .expect("session quality lock poisoned")
+        .set_page_hidden(notice.hidden, now)
+    {
+        return;
+    }
+    if notice.hidden {
+        client.session_summary.page_hidden_periods += 1;
+    }
+    tracing::info!(
+        player_id = identity.player_id,
+        session_id = identity.session_id.get(),
+        arena_stream_id = client.arena_stream_id,
+        hidden = notice.hidden,
+        measurement = if notice.hidden { "paused" } else { "resumed" },
+        "page visibility changed"
+    );
+}
+
 /// Shared only by this session's RTC callback, writer and simulation. Its small
 /// lock is independent of ServerState and is never held across an await.
 #[derive(Debug)]
 pub(crate) struct SessionConnectionQuality {
     arena_stream_id: u64,
     transport_available: bool,
+    /// The page reported itself hidden; measurement pauses until it is
+    /// visible again or plays (see `HIDDEN_GAMEPLAY_LIMIT`).
+    page_hidden: bool,
+    positions_while_hidden: u32,
+    /// A voided hidden claim is not honoured again in this session.
+    hidden_claims_ignored: bool,
     sequence: u32,
     queued: Option<ConnectionQualityProbe>,
     queued_at: Option<Instant>,
@@ -396,6 +487,9 @@ impl SessionConnectionQuality {
         Self {
             arena_stream_id: 0,
             transport_available: true,
+            page_hidden: false,
+            positions_while_hidden: 0,
+            hidden_claims_ignored: false,
             sequence: 0,
             queued: None,
             queued_at: None,
@@ -420,9 +514,13 @@ impl SessionConnectionQuality {
     pub(crate) fn reset_scope(&mut self, arena_stream_id: u64, now: Instant) {
         let policy = self.monitor.policy;
         let transport_available = self.transport_available;
+        let page_hidden = self.page_hidden;
+        let hidden_claims_ignored = self.hidden_claims_ignored;
         *self = Self::new(now);
         self.monitor.policy = policy;
         self.transport_available = transport_available;
+        self.page_hidden = page_hidden;
+        self.hidden_claims_ignored = hidden_claims_ignored;
         self.arena_stream_id = arena_stream_id;
     }
 
@@ -433,14 +531,54 @@ impl SessionConnectionQuality {
     pub(crate) fn set_transport_available(&mut self, available: bool, now: Instant) {
         if self.transport_available != available {
             self.transport_available = available;
-            self.monitor.discard_window(now);
-            self.cancel_queued();
-            self.reading = None;
+            self.pause_or_resume(now);
         }
     }
 
+    /// The same pause for a hidden page: its unanswered probes are not loss.
+    /// Returns whether the state changed. A session whose hidden claim was
+    /// voided by gameplay cannot pause measurement again.
+    pub(crate) fn set_page_hidden(&mut self, hidden: bool, now: Instant) -> bool {
+        if self.page_hidden == hidden || (hidden && self.hidden_claims_ignored) {
+            return false;
+        }
+        self.page_hidden = hidden;
+        self.positions_while_hidden = 0;
+        self.pause_or_resume(now);
+        true
+    }
+
+    /// Count a received position. Returns true when it voids a hidden claim.
+    pub(crate) fn note_gameplay(&mut self, now: Instant) -> bool {
+        if !self.page_hidden {
+            return false;
+        }
+        self.positions_while_hidden = self.positions_while_hidden.saturating_add(1);
+        if self.positions_while_hidden <= HIDDEN_GAMEPLAY_LIMIT {
+            return false;
+        }
+        self.hidden_claims_ignored = true;
+        self.set_page_hidden(false, now)
+    }
+
+    pub(crate) fn page_hidden(&self) -> bool {
+        self.page_hidden
+    }
+
+    fn measuring(&self) -> bool {
+        self.transport_available && !self.page_hidden
+    }
+
+    /// Keep committed cooldowns; discard measurements, pending dispatch and
+    /// stale recovery evidence on either side of a pause.
+    fn pause_or_resume(&mut self, now: Instant) {
+        self.monitor.discard_window(now);
+        self.cancel_queued();
+        self.reading = None;
+    }
+
     pub(crate) fn poll(&mut self, now: Instant, host_healthy: bool) -> Option<QualityReading> {
-        if self.arena_stream_id == 0 || !self.transport_available {
+        if self.arena_stream_id == 0 || !self.measuring() {
             return None;
         }
         if !host_healthy {
@@ -466,7 +604,7 @@ impl SessionConnectionQuality {
         now: Instant,
     ) -> Option<ConnectionQualityProbe> {
         if self.arena_stream_id == 0
-            || !self.transport_available
+            || !self.measuring()
             || nonce == 0
             || self.queued.is_some()
             || !self.monitor.probe_due(now)
@@ -495,7 +633,7 @@ impl SessionConnectionQuality {
     /// Runs immediately before the actual DataChannel send. A stale queued
     /// probe cannot start a sample after arena replacement or host cancellation.
     pub(crate) fn begin_dispatch(&mut self, probe: ConnectionQualityProbe, now: Instant) -> bool {
-        if !self.transport_available || self.queued != Some(probe) {
+        if !self.measuring() || self.queued != Some(probe) {
             return false;
         }
         if self
@@ -523,7 +661,7 @@ impl SessionConnectionQuality {
 
     /// On the authenticated RTC game channel, before the application queue.
     pub(crate) fn receive_echo(&mut self, probe: ConnectionQualityProbe, now: Instant) -> bool {
-        if !self.transport_available
+        if !self.measuring()
             || probe.server_session_id != crate::wire::server_session_id()
             || probe.arena_stream_id != self.arena_stream_id
             || !self.monitor.pending.iter().any(|pending| {
@@ -747,7 +885,8 @@ pub(crate) fn summary(state: &crate::state::ServerState) -> serde_json::Value {
         mut cancelled,
         mut samples,
         mut degraded,
-    ) = (0u64, 0u64, 0u64, 0u64, 0u64, 0usize, 0u64);
+        mut page_hidden,
+    ) = (0u64, 0u64, 0u64, 0u64, 0u64, 0usize, 0u64, 0u64);
     let (mut max_rtt_ms, mut max_loss) = (0.0f64, 0.0f64);
     for shared in state
         .clients
@@ -759,6 +898,7 @@ pub(crate) fn summary(state: &crate::state::ServerState) -> serde_json::Value {
         sent = sent.saturating_add(quality.sent);
         echoes = echoes.saturating_add(quality.echoes);
         cancelled = cancelled.saturating_add(quality.dispatch_cancelled);
+        page_hidden += u64::from(quality.page_hidden());
         if let Some(reading) = quality.reading {
             samples += reading.samples;
             if reading.samples >= MIN_SAMPLES {
@@ -773,7 +913,8 @@ pub(crate) fn summary(state: &crate::state::ServerState) -> serde_json::Value {
         "measured_sessions": measured, "dispatch_started": sent, "echoes_received": echoes,
         "local_dispatch_cancelled": cancelled, "samples": samples,
         "max_session_average_rtt_ms": max_rtt_ms, "max_session_round_trip_probe_loss": max_loss,
-        "sustained_degraded_sessions": degraded, "enforcement_enabled": true,
+        "sustained_degraded_sessions": degraded, "page_hidden_sessions": page_hidden,
+        "enforcement_enabled": true,
         "retained_holds": state.quality_holds.len(),
         "held_sessions": state.clients.keys().filter(|&&id| hold_for_client(state, id).is_some()).count(),
         "forced_total": state.quality_holds.forced, "return_denied_total": state.quality_holds.denied,
@@ -1231,5 +1372,182 @@ mod tests {
             forced_again |= step(&mut monitor, base, ms, None).should_spectate;
         }
         assert!(forced_again);
+    }
+
+    /// Drive a session at the 500 ms probe cadence over `[from_ms, to_ms)`,
+    /// answering every probe after `rtt_ms`, or none when it is `None`.
+    /// Returns whether any reading in the span would force spectator.
+    fn drive(
+        session: &mut SessionConnectionQuality,
+        base: Instant,
+        from_ms: u64,
+        to_ms: u64,
+        rtt_ms: Option<u64>,
+    ) -> bool {
+        let mut forced = false;
+        for ms in (from_ms..to_ms).step_by(500) {
+            let now = base + Duration::from_millis(ms);
+            forced |= session
+                .poll(now, true)
+                .is_some_and(|reading| reading.should_spectate);
+            if let Some(probe) = session.reserve_probe(ms + 1, now) {
+                assert!(session.begin_dispatch(probe, now));
+                if let Some(rtt) = rtt_ms {
+                    assert!(session.receive_echo(probe, now + Duration::from_millis(rtt)));
+                }
+            }
+        }
+        forced
+    }
+
+    // Prod: a 25 ms player whose page was hidden for about 15 s answered no
+    // probes in that time, read as 52% loss and was forced to spectator.
+    #[test]
+    fn a_hidden_page_pauses_measurement_instead_of_reading_as_loss() {
+        let base = Instant::now();
+        let mut unannounced = SessionConnectionQuality::new(base);
+        unannounced.reset_scope(1, base);
+        assert!(!drive(&mut unannounced, base, 0, 20_000, Some(25)));
+        drive(&mut unannounced, base, 20_000, 35_000, None);
+        assert!(
+            drive(&mut unannounced, base, 35_000, 60_000, Some(25)),
+            "without a visibility notice the hidden silence forces spectator"
+        );
+
+        let mut announced = SessionConnectionQuality::new(base);
+        announced.reset_scope(1, base);
+        assert!(!drive(&mut announced, base, 0, 20_000, Some(25)));
+        let hidden_at = base + Duration::from_secs(20);
+        assert!(announced.set_page_hidden(true, hidden_at));
+        assert!(
+            !announced.set_page_hidden(true, hidden_at),
+            "repeat is a no-op"
+        );
+        for second in 20..35 {
+            let now = base + Duration::from_secs(second);
+            assert!(announced.poll(now, true).is_none());
+            assert!(announced.reserve_probe(second + 1, now).is_none());
+        }
+        assert!(announced.monitor.pending.is_empty() && announced.monitor.samples.is_empty());
+        assert!(announced.set_page_hidden(false, base + Duration::from_secs(35)));
+        assert!(!drive(&mut announced, base, 35_000, 60_000, Some(25)));
+        let reading = announced.reading.unwrap();
+        assert_eq!(reading.round_trip_loss, 0.0);
+        assert!(reading.sustained_healthy, "fresh evidence after the pause");
+
+        // A genuinely lossy visible page is still enforced.
+        let mut lossy = SessionConnectionQuality::new(base);
+        lossy.reset_scope(1, base);
+        assert!(drive(&mut lossy, base, 0, 30_000, None));
+    }
+
+    #[test]
+    fn a_hidden_claim_contradicted_by_gameplay_is_voided_for_the_session() {
+        let base = Instant::now();
+        let mut session = SessionConnectionQuality::new(base);
+        session.reset_scope(1, base);
+        assert!(session.set_page_hidden(true, base));
+        // Positions already in flight when the page hid are tolerated.
+        for _ in 0..HIDDEN_GAMEPLAY_LIMIT {
+            assert!(!session.note_gameplay(base));
+        }
+        assert!(session.page_hidden());
+        assert!(
+            session.note_gameplay(base),
+            "a page that keeps playing is not hidden"
+        );
+        assert!(!session.page_hidden());
+        assert!(session.poll(base, true).is_some(), "measurement resumed");
+        assert!(
+            !session.set_page_hidden(true, base),
+            "later claims are ignored"
+        );
+        session.reset_scope(2, base);
+        assert!(
+            !session.set_page_hidden(true, base),
+            "even after an arena change"
+        );
+        // Visible pages count nothing.
+        let mut visible = SessionConnectionQuality::new(base);
+        visible.reset_scope(1, base);
+        for _ in 0..1_000 {
+            assert!(!visible.note_gameplay(base));
+        }
+        assert!(visible.set_page_hidden(true, base));
+    }
+
+    #[test]
+    fn page_visibility_notices_are_exactly_framed_and_scoped_to_the_session() {
+        use std::sync::{Arc, Mutex, mpsc};
+        let notice = PageVisibilityNotice {
+            server_session_id: crate::wire::server_session_id(),
+            arena_stream_id: 7,
+            hidden: true,
+        };
+        let bytes = notice.encode();
+        assert_eq!(bytes.len(), PageVisibilityNotice::LEN);
+        assert_eq!(PageVisibilityNotice::parse(&bytes), Some(notice));
+        for size in 0..PageVisibilityNotice::LEN {
+            assert!(PageVisibilityNotice::parse(&bytes[..size]).is_none());
+        }
+        for (offset, value) in [(0, 0x84), (1, 2), (18, 2)] {
+            let mut malformed = bytes.clone();
+            malformed[offset] = value;
+            assert!(PageVisibilityNotice::parse(&malformed).is_none());
+        }
+        let unscoped = PageVisibilityNotice {
+            arena_stream_id: 0,
+            ..notice
+        };
+        assert!(PageVisibilityNotice::parse(&unscoped.encode()).is_none());
+
+        let state = Arc::new(Mutex::new(crate::state::ServerState::default()));
+        let (tx, _rx) = mpsc::channel();
+        let id = crate::arena::register_connection(&state, tx);
+        crate::arena::join_arena(&state, id, 0);
+        let base = Instant::now();
+        let mut guard = state.lock().unwrap();
+        let (identity, stream) = {
+            let client = guard.clients.get_mut(&id).unwrap();
+            let mut quality = SessionConnectionQuality::new(base);
+            quality.reset_scope(client.arena_stream_id, base);
+            client.connection_quality = Some(Arc::new(Mutex::new(quality)));
+            (
+                crate::authority_identity::PlayerSessionIdentity::new(id, client.session_id),
+                client.arena_stream_id,
+            )
+        };
+        let hidden = |guard: &crate::state::ServerState| {
+            guard.clients[&id]
+                .connection_quality
+                .as_ref()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .page_hidden()
+        };
+        let scoped = |arena_stream_id, hidden| {
+            PageVisibilityNotice {
+                server_session_id: crate::wire::server_session_id(),
+                arena_stream_id,
+                hidden,
+            }
+            .encode()
+        };
+        receive_page_visibility(&mut guard, identity, &scoped(stream + 1, true), base);
+        assert!(!hidden(&guard), "another arena stream's notice is ignored");
+        let stale_session = crate::authority_identity::PlayerSessionIdentity::new(
+            id,
+            crate::authority_identity::PlayerSessionId::new(identity.session_id.get() + 1),
+        );
+        receive_page_visibility(&mut guard, stale_session, &scoped(stream, true), base);
+        assert!(!hidden(&guard), "another session's notice is ignored");
+        receive_page_visibility(&mut guard, identity, &scoped(stream, true), base);
+        assert!(hidden(&guard));
+        assert_eq!(guard.clients[&id].session_summary.page_hidden_periods, 1);
+        assert_eq!(summary(&guard)["page_hidden_sessions"], 1);
+        receive_page_visibility(&mut guard, identity, &scoped(stream, false), base);
+        assert!(!hidden(&guard));
+        assert_eq!(summary(&guard)["page_hidden_sessions"], 0);
     }
 }

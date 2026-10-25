@@ -381,7 +381,8 @@ transition means for gameplay is in [Server authority](authoritative_server.md).
 Other Zubspace packets on the reliable channel: from the server, `0x60` hidden
 prize spawn, `0x6c` QA trace context, `0x83` connection-quality directive and
 `0x8d` spawn-idle spectator; from the client, the `0x80` player experience
-report ([Observability](observability.md)).
+report ([Observability](observability.md)) and the `0x85` page visibility
+notice ([Connection quality](connection-quality.md#measurement-window)).
 
 ## Server RTC internals
 

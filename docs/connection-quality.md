@@ -61,7 +61,19 @@ server cannot trust its own timing or the transport is known to be down:
   (at least 50 ms);
 - a queued probe has not been sent within 1 s;
 - the WebRTC peer leaves the `connected` state (for example a closed tab
-  waiting for ICE to time out), until it is connected again.
+  waiting for ICE to time out), until it is connected again;
+- the page is hidden (another tab, minimized), until it is visible again.
+
+**Hidden pages.** A hidden browser page runs no frames, so it answers no
+probes, and a few seconds of that silence would read as heavy loss. The page
+therefore sends a reliable `0x85` notice (19 bytes: kind, version 1, server
+session, arena stream, hidden flag) whenever it hides or shows. While hidden,
+the server sends no probes and judges nothing; when it shows again, measurement
+starts afresh. The notice never lifts a hold, grants play or adds a sample. A
+hidden page sends no positions either: one that sends more than 60 while
+claiming to be hidden (beyond those in flight when it hid) loses the pause,
+and that session's later hidden notices are ignored. Browsers that never send
+the notice are measured as before.
 
 A new join or arena change starts a fresh window.
 
@@ -95,8 +107,11 @@ re-checked at the moment of the request.
 - If not, the request is refused with a Hold directive naming that request, and
   the player stays a spectator with the remaining time shown. When the hold has
   already expired and only the health check failed, the client reconnects once
-  to start a fresh measurement on a new connection, stays a spectator, and asks
-  the player to pick a ship again; it gives up after 75 s.
+  to start a fresh measurement on a new connection and stays a spectator. A
+  fresh connection needs about 22.5 s of probes before it can show sustained
+  health (20 outcomes, then 10 s), so the client counts down 24 s from the new
+  connection before asking the player to pick a ship again, and explains any
+  refusal in the meantime; it gives up after 75 s.
 - If so, the server removes the hold, sends a Clear directive and then the
   ordinary ship change. The new ship then goes through the normal baseline and
   receipt ([Networking](networking.md#reliable-messages-and-lifecycle-receipts)).
@@ -173,8 +188,9 @@ Our prod and dev servers set `quality_max_rtt_ms = 400` and
 
 - **`/v1/status` → `connection_quality`**: current sessions, measured sessions,
   probes sent, echoes received, local cancellations, outcomes in windows, the
-  worst session average RTT and loss, sessions currently degraded, retained
-  holds, held sessions, the three decision counters and the active thresholds.
+  worst session average RTT and loss, sessions currently degraded, sessions
+  paused because their page is hidden (`page_hidden_sessions`), retained holds,
+  held sessions, the three decision counters and the active thresholds.
 - **Prometheus**: the same counts (not the thresholds) as
   `zubspace_connection_quality_*`. The per-session values are gauges over
   current sessions and drop when sessions leave; `forced_total`,
@@ -184,7 +200,10 @@ Our prod and dev servers set `quality_max_rtt_ms = 400` and
   10 s (samples, average RTT, loss, host health), with a DEBUG probe audit
   beside it. Decisions are logged as `connection quality decision` with
   `decision` set to `forced_spectator` (WARN), `return_denied` or
-  `return_accepted` (INFO), or `hold_allocation_failed` (ERROR).
+  `return_accepted` (INFO), or `hold_allocation_failed` (ERROR). Each
+  visibility change is an INFO `page visibility changed` line (`hidden`,
+  `measurement` paused or resumed); a voided hidden claim is a WARN
+  `page reported hidden while sending gameplay; measurement resumed`.
 
 See [Observability](observability.md) for the listener and log setup.
 

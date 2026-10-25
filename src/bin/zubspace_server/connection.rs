@@ -2648,6 +2648,16 @@ fn handle_authenticated_client_packet(
         crate::observability::receive_player_report(state, identity, &packet);
         return;
     }
+    if packet.first() == Some(&crate::connection_quality::PageVisibilityNotice::TYPE) {
+        let mut state = state.lock().expect("server state should not be poisoned");
+        crate::connection_quality::receive_page_visibility(
+            &mut state,
+            identity,
+            &packet,
+            Instant::now(),
+        );
+        return;
+    }
     if is_time_sync_request(&packet) {
         let arena_stream_id = state
             .lock()
@@ -2991,6 +3001,20 @@ fn handle_authenticated_client_packet(
         } else {
             if let Some(client) = state.clients.get_mut(&player_id) {
                 client.positions_received = client.positions_received.saturating_add(1);
+                // A hidden page sends no positions; a "hidden" one that keeps
+                // playing loses the measurement pause.
+                if client.connection_quality.as_ref().is_some_and(|quality| {
+                    quality
+                        .lock()
+                        .expect("session quality lock poisoned")
+                        .note_gameplay(Instant::now())
+                }) {
+                    tracing::warn!(
+                        player_id,
+                        session_id = client.session_id.get(),
+                        "page reported hidden while sending gameplay; measurement resumed"
+                    );
+                }
             }
             state.queue_position_input_for_runtime(runtime_identity, packet);
         }

@@ -9085,11 +9085,14 @@ fn quality_return_recovery_requires_the_exact_expired_ship_denial_and_is_not_res
                 attempt.poll(now, false, false, false),
                 quality_return::RecoveryAction::Reconnect
             );
+            // In scope, but the server has not measured the fresh connection.
             assert_eq!(
                 attempt.poll(now, false, true, false),
-                quality_return::RecoveryAction::Ready
+                quality_return::RecoveryAction::Wait
             );
-            let ready = game.quality_return_recovery;
+            // A selection during that measurement is explained the same way,
+            // without restarting recovery.
+            let settling = game.quality_return_recovery;
             game.client_authority
                 .queue_lifecycle_intent(PendingLifecycleRequest::Ship(5));
             game.client_authority.record_ship_request_submitted(5, 18);
@@ -9097,6 +9100,30 @@ fn quality_return_recovery_requires_the_exact_expired_ship_denial_and_is_not_res
                 &mut game,
                 ConnectionQualityDirective {
                     rejected_request: Some((5, 18)),
+                    ..denial
+                },
+            );
+            assert_eq!(game.quality_return_recovery, settling);
+            assert!(
+                game.notifications
+                    .last()
+                    .unwrap()
+                    .message
+                    .contains("still being checked")
+            );
+            let attempt = game.quality_return_recovery.as_mut().unwrap();
+            assert_eq!(
+                attempt.poll(now + quality_return::FRESH_MEASUREMENT, false, true, false),
+                quality_return::RecoveryAction::Ready
+            );
+            let ready = game.quality_return_recovery;
+            game.client_authority
+                .queue_lifecycle_intent(PendingLifecycleRequest::Ship(5));
+            game.client_authority.record_ship_request_submitted(5, 19);
+            apply(
+                &mut game,
+                ConnectionQualityDirective {
+                    rejected_request: Some((5, 19)),
                     ..denial
                 },
             );

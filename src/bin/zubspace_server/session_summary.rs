@@ -20,6 +20,8 @@ pub(crate) struct SessionSummary {
     ice_rtt_us_max: u32,
     pub(crate) snapbacks: u32,
     pub(crate) position_rejects: u32,
+    /// Times the page reported itself hidden (tabbed away or minimized).
+    pub(crate) page_hidden_periods: u32,
     weapons_fired: u32,
     weapons_rejected: u32,
     weapons_rejected_combat_view: u32,
@@ -45,6 +47,7 @@ impl Default for SessionSummary {
             weapons_fired: 0,
             weapons_rejected: 0,
             weapons_rejected_combat_view: 0,
+            page_hidden_periods: 0,
         }
     }
 }
@@ -124,6 +127,7 @@ pub(crate) fn log(client: &ClientHandle) {
         weapons_fired = summary.weapons_fired,
         weapons_rejected = summary.weapons_rejected,
         weapons_rejected_combat_view = summary.weapons_rejected_combat_view,
+        page_hidden_periods = summary.page_hidden_periods,
         "session summary"
     );
 }

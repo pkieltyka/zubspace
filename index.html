@@ -5438,6 +5438,16 @@
             return 0;
           };
           document.addEventListener("visibilitychange", () => playerTelemetry.reset());
+          // The game publishes its session scope; the page reports its own
+          // visibility because no frame runs once it is hidden.
+          let connectionScope = null;
+          importObject.env.zub_connection_scope = (ptr, len) => {
+            connectionScope = len === 16 ? heapBytes(ptr, len).slice() : null;
+          };
+          document.addEventListener("visibilitychange", () => {
+            const notice = ZubspacePlayerTelemetry.visibilityNotice(connectionScope, document.hidden);
+            if (notice && state.reliableChannel?.readyState === "open") sendNetworkPacket(notice);
+          });
           importObject.env.zub_player_frame = (corrections, ready) => playerTelemetry.frame(corrections >>> 0, ready !== 0);
           importObject.env.zub_player_report = (ptr, len) => {
             // Own the buffer before the asynchronous stats call yields back to WASM.
