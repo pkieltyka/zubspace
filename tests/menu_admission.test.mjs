@@ -23,7 +23,7 @@ test('normal rejection messages distinguish name, population and connection fail
   assert.equal(admission.message(1), 'That username is currently in use. Try another name.');
   assert.equal(admission.message(2), 'Sorry, the arena is full at this time.');
   assert.equal(admission.message(3), 'Unable to connect. Please try again.');
-  assert.equal(admission.message(5), 'Use 1–14 letters, numbers, ! or * for your player name.');
+  assert.equal(admission.message(5), 'Use 1–14 letters, numbers, !, *, - or _, with single spaces between words.');
   for (const code of [0, -1, 6, '1', '4', '5', 'toString', '__proto__']) assert.equal(admission.message(code), null);
 });
 
@@ -137,7 +137,7 @@ test('name form prompts only empty names automatically, while explicit admission
 });
 
 test('actual name form trims edges on submission without silently rewriting invalid or overlong names', async()=>{
-  for (const name of ['Ace Pilot','x.y','x$y','x(y)','a'.repeat(15),'Ace\u200bPilot']) {
+  for (const name of ['Ace  Pilot','x.y','x$y','x(y)','a'.repeat(15),'Ace\u200bPilot']) {
     const f=joinFormFixture({name});
     assert.equal(f.button.disabled,true); assert.equal(f.input.value,name);
     assert.equal(f.text.textContent,admission.message(5));
@@ -157,7 +157,7 @@ test('actual name form trims edges on submission without silently rewriting inva
 test('legacy invalid names return an editable form and valid stored/URL names retain normalized identity', async()=>{
   const start=entryHtml.indexOf('        async function resolvePlayerIdentity(');
   const end=entryHtml.indexOf('        function installZubspaceAudioUnlockBridge(',start);
-  for (const source of ['url','stored']) for (const raw of ['Old Name','x.y','\u200b Ace!* \u00a0']) {
+  for (const source of ['url','stored']) for (const raw of ['Old  Name','x.y','mr rogers','mr_rogers','mr-rogers','\u200b Ace!* \u00a0']) {
     const forms=[],joins=[],stored={playerId:'123456789012',name:raw};
     const scope=vm.createContext({window:{zubspaceMenu:{mobile:false},zubspaceMenuAdmission:{takeRetry:()=>null}},
       readStoredIdentity:()=>stored,queryParam:key=>key==='name'&&source==='url'?raw:null,
@@ -167,7 +167,7 @@ test('legacy invalid names return an editable form and valid stored/URL names re
       updateIdentityStorage:value=>value,showWelcome:()=>joins.push('url'),canvas:{focus(){}},
       confirmStoredPlayerJoin:value=>{joins.push(value);return value;},Date});
     vm.runInContext(entryHtml.slice(start,end),scope); await scope.resolvePlayerIdentity();
-    if (raw.includes('Ace!*')) { assert.equal(forms.length,0);assert.equal(joins.length,1); }
+    if (context.zubspacePlayerName.valid(context.zubspacePlayerName.normalize(raw))) { assert.equal(forms.length,0);assert.equal(joins.length,1); }
     else { assert.deepEqual(forms,[[stored.playerId,raw,5]]); assert.equal(joins.length,0); }
   }
 });

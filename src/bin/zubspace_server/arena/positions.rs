@@ -4938,6 +4938,7 @@ mod tests {
             maxed_spawn_loadout: false, // This fixture tests the authored base movement model.
             spawn_idle: Default::default(),
             session_summary: Default::default(),
+            quality_warnings: Default::default(),
             session_id: PlayerSessionId::new(1),
             arena_stream_id: 1,
             inputs_received: 0,

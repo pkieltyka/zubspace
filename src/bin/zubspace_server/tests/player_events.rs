@@ -138,3 +138,21 @@ fn server_routes_private_chat_only_to_sender_and_target() {
     assert_eq!(read_reliable_payload_from_channel(&rx_b), expected);
     assert!(rx_c.try_recv().is_err());
 }
+
+#[test]
+fn server_preserves_long_chat_and_bounds_oversized_unicode_messages() {
+    for message in [
+        "x".repeat(256),
+        "🚀".repeat(256),
+        "x".repeat(300),
+        "🚀".repeat(300),
+    ] {
+        let mut request = vec![0x06, 2, 0, 0, 0];
+        request.extend(message.as_bytes());
+        request.push(0);
+        let packet = chat_packet_from_request(9, &request).unwrap();
+        let body = std::str::from_utf8(&packet[5..packet.len() - 1]).unwrap();
+        assert_eq!(body, message.chars().take(256).collect::<String>());
+        assert!(body.len() <= 1024);
+    }
+}

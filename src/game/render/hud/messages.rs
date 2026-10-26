@@ -35,7 +35,12 @@ impl Game {
             } else {
                 ""
             };
-            wrap_hud_text(&format!("> {}{}", self.chat.input, cursor), max_chars)
+            let mut lines = wrap_hud_text(&format!("> {}{}", self.chat.input, cursor), max_chars);
+            // Keep the editing cursor visible without covering the arena on
+            // narrow windows. Earlier text returns as the player backspaces.
+            let hidden = lines.len().saturating_sub(3);
+            lines.drain(..hidden);
+            lines
         } else {
             Vec::new()
         };

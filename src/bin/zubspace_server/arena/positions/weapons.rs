@@ -284,6 +284,9 @@ fn accepted_position_weapon_with_logging(
             outcome.accepted_weapon_data != 0,
             block.combat_view.is_some(),
         );
+        if outcome.accepted_weapon_data == 0 && block.combat_view.is_some() {
+            crate::connection_quality::note_view_refused_shot(sender, std::time::Instant::now());
+        }
         let accepted_weapon = outcome.accepted_weapon_data;
         let accepted_weapon_type = continuum_weapon_type(accepted_weapon);
         if accepted_weapon != 0 {

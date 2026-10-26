@@ -46,6 +46,11 @@ const RTC_UDP_RECOVERY_INTERVAL: Duration = Duration::from_secs(1);
 const RTC_UDP_RECOVERY_ATTEMPTS_PER_CYCLE: usize = 60;
 const RTC_UDP_RECOVERY_INITIAL_BACKOFF: Duration = Duration::from_secs(5);
 const RTC_UDP_RECOVERY_MAX_BACKOFF: Duration = Duration::from_secs(60);
+/// A registered peer holds a player id and one of the bounded UDP ports, so it
+/// must log in. The browser sends its login as soon as the channels open, but
+/// retries an in-use identity on the same connection for up to 45 s
+/// (`IdentityLoginRetry`), so the deadline stays well beyond that.
+const RTC_LOGIN_DEADLINE: Duration = Duration::from_secs(90);
 pub(crate) const RTC_DATA_CHANNEL_SEND_BUFFER_BYTES: usize = 256 * 1024;
 pub(crate) const RTC_APPLICATION_RELIABLE_QUEUE_PACKETS: usize = 4_096;
 pub(crate) const RTC_APPLICATION_QUEUE_BYTES: usize = 4 * 1024 * 1024;
@@ -1632,7 +1637,39 @@ fn register_rtc_session_if_needed(session: &Arc<RtcSession>) -> bool {
 
     let writer_session = Arc::clone(session);
     let handle = tokio::runtime::Handle::current();
+    let login_session = Arc::downgrade(session);
+    handle.spawn(async move {
+        tokio::time::sleep(RTC_LOGIN_DEADLINE).await;
+        if let Some(session) = login_session.upgrade() {
+            expire_rtc_session_without_login(&session, identity);
+        }
+    });
     thread::spawn(move || write_rtc_packets(outbound, handle, writer_session));
+    true
+}
+
+/// Disconnect a still-registered session whose login was never accepted.
+fn expire_rtc_session_without_login(
+    session: &Arc<RtcSession>,
+    identity: PlayerSessionIdentity,
+) -> bool {
+    // Registration takes server state before the lifecycle lock, so release
+    // the lifecycle lock before asking server state about the login.
+    let registered = *session
+        .lifecycle
+        .lock()
+        .expect("rtc session lifecycle lock should not be poisoned")
+        == RtcSessionLifecycle::Registered(identity);
+    if !registered || crate::identity::player_login_accepted(&session.state, identity.player_id) {
+        return false;
+    }
+    warn!(
+        player_id = identity.player_id,
+        peer = %session.peer,
+        deadline_s = RTC_LOGIN_DEADLINE.as_secs(),
+        "server rtc session never logged in; disconnecting"
+    );
+    disconnect_rtc_session(session);
     true
 }
 
@@ -4745,6 +4782,81 @@ mod tests {
                     && state.rtc_sessions == 0
             },
         );
+    }
+
+    #[test]
+    fn registered_session_is_disconnected_only_when_its_login_was_never_accepted() {
+        assert!(
+            RTC_LOGIN_DEADLINE > Duration::from_secs(45),
+            "the deadline must outlast the browser's in-use identity retries"
+        );
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("login deadline test runtime should build");
+        for logged_in in [false, true] {
+            let state = Arc::new(Mutex::new(ServerState::new(ServerConfig {
+                max_players: 1,
+                ..ServerConfig::default()
+            })));
+            let metrics = state.lock().unwrap().rtc_overload_metrics.clone();
+            let mut channels = RtcChannels::default();
+            channels.protocol = valid_open_channel_protocol();
+            let session = Arc::new(RtcSession {
+                state: Arc::clone(&state),
+                peer: "login-deadline".to_string(),
+                lifecycle: Mutex::new(RtcSessionLifecycle::Handshaking),
+                lifecycle_changed: watch::channel(RtcSessionLifecycle::Handshaking).0,
+                joined: Mutex::new(false),
+                inbound_acks: AtomicUsize::new(0),
+                registered_acks: AtomicUsize::new(0),
+                channels: Mutex::new(channels),
+                outbound: Mutex::new(None),
+                metrics,
+                closed: Arc::new(Notify::new()),
+                admission: RtcAdmission::reserve(Arc::clone(&state))
+                    .expect("test handshake should reserve its only slot"),
+            });
+
+            runtime.block_on(async {
+                assert!(register_rtc_session_if_needed(&session));
+                let RtcSessionLifecycle::Registered(identity) = *session.lifecycle.lock().unwrap()
+                else {
+                    panic!("registration should record the session identity");
+                };
+                if logged_in {
+                    state
+                        .lock()
+                        .unwrap()
+                        .clients
+                        .get_mut(&identity.player_id)
+                        .unwrap()
+                        .player_identity = Some("000000000001".to_string());
+                }
+
+                assert_eq!(
+                    expire_rtc_session_without_login(&session, identity),
+                    !logged_in
+                );
+                assert_eq!(
+                    state
+                        .lock()
+                        .unwrap()
+                        .clients
+                        .contains_key(&identity.player_id),
+                    logged_in
+                );
+                assert_eq!(
+                    *session.lifecycle.lock().unwrap() == RtcSessionLifecycle::Closed,
+                    !logged_in
+                );
+                disconnect_rtc_session(&session);
+                assert!(
+                    !expire_rtc_session_without_login(&session, identity),
+                    "a closed session is never disconnected twice"
+                );
+            });
+        }
     }
 
     #[test]

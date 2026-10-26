@@ -7,6 +7,10 @@ use std::time::{Duration, Instant};
 #[path = "connection_quality/holds.rs"]
 pub(crate) mod holds;
 
+#[path = "connection_quality/warnings.rs"]
+mod warnings;
+pub(crate) use warnings::{QualityWarnings, note_view_refused_shot};
+
 #[path = "connection_quality/presentation.rs"]
 mod presentation;
 pub(crate) use presentation::{
@@ -698,11 +702,17 @@ pub(crate) fn poll_client(
     if !client.joined || !client.snapshot_ready {
         return;
     }
-    let Some(shared) = client.connection_quality.as_ref() else {
+    let Some(shared) = client.connection_quality.clone() else {
         return;
     };
     let mut quality = shared.lock().expect("session quality lock poisoned");
-    if let Some(reading) = quality.poll(now, host_healthy) {
+    let reading = quality.poll(now, host_healthy);
+    // Only a player in a ship is warned; a spectator, a hidden page or an
+    // unmeasured link starts the unhealthy period again.
+    let fault = reading
+        .filter(|_| client.player.ship < 8)
+        .and_then(|reading| warnings::link_fault(&reading, quality.monitor.policy));
+    if let Some(reading) = reading {
         if quality.log_due(now) {
             tracing::debug!(
                 player_id = client.player.id,
@@ -749,6 +759,9 @@ pub(crate) fn poll_client(
             }
         }
     }
+    // Never queue a reliable send while holding the session quality lock.
+    drop(quality);
+    warnings::poll_link(client, fault, reading, now);
 }
 
 /// Runs under the tick's exclusive arena transaction and ServerState lock.
@@ -1014,6 +1027,82 @@ mod tests {
             })
             .collect::<Vec<_>>();
         assert_eq!(good_payloads, [payloads[1].clone()]);
+    }
+
+    #[test]
+    fn an_unhealthy_player_in_a_ship_is_warned_once_without_being_moved() {
+        use crate::connection_quality_protocol::{
+            ConnectionQualityWarning, ConnectionQualityWarningReason,
+        };
+        use std::sync::{Arc, Mutex, mpsc};
+        let state = Arc::new(Mutex::new(crate::state::ServerState::default()));
+        let (tx_slow, rx_slow) = mpsc::channel();
+        let (tx_fast, rx_fast) = mpsc::channel();
+        let slow = crate::arena::register_connection(&state, tx_slow);
+        let fast = crate::arena::register_connection(&state, tx_fast);
+        for (id, identity) in [(slow, "slow"), (fast, "fast")] {
+            assert!(crate::identity::set_player_identity_and_name(
+                &state,
+                id,
+                identity.into(),
+                identity.into()
+            ));
+            crate::arena::join_arena(&state, id, 0);
+        }
+        let base = Instant::now();
+        let now = base + Duration::from_secs(30);
+        let mut guard = state.lock().unwrap();
+        // 450 ms is at or above the default 400 ms recovery limit but below
+        // the 600 ms limit that moves a player to spectator.
+        for (id, rtt) in [(slow, 450), (fast, 40)] {
+            let client = guard.clients.get_mut(&id).unwrap();
+            let mut quality = SessionConnectionQuality::new(base);
+            quality.reset_scope(client.arena_stream_id, base);
+            for ms in (0..=30_000).step_by(500) {
+                step(&mut quality.monitor, base, ms, Some(rtt));
+            }
+            client.connection_quality = Some(Arc::new(Mutex::new(quality)));
+            client.snapshot_ready = true;
+        }
+        rx_slow.try_iter().for_each(drop);
+        rx_fast.try_iter().for_each(drop);
+        let warnings = |rx: &mpsc::Receiver<Vec<u8>>| {
+            rx.try_iter()
+                .filter_map(|packet| {
+                    crate::reliable::reliable_payload(&packet)
+                        .and_then(|payload| ConnectionQualityWarning::parse(payload).ok())
+                })
+                .collect::<Vec<_>>()
+        };
+        // The session writer normally dispatches each queued probe at once;
+        // here nothing does, so retire it rather than let it read as a stall.
+        let mut poll = |from_ms: u64, to_ms: u64| {
+            for ms in (from_ms..=to_ms).step_by(500) {
+                for id in [slow, fast] {
+                    let client = guard.clients.get_mut(&id).unwrap();
+                    poll_client(client, now + Duration::from_millis(ms), true);
+                    let quality = client.connection_quality.as_ref().unwrap();
+                    quality.lock().unwrap().cancel_queued();
+                }
+            }
+        };
+        poll(0, 4_500);
+        assert_eq!(warnings(&rx_slow), [], "not before five seconds");
+        poll(5_000, 15_000);
+        let sent = warnings(&rx_slow);
+        assert_eq!(sent.len(), 1, "one warning a minute: {sent:?}");
+        assert_eq!(sent[0].reason, ConnectionQualityWarningReason::HighLatency);
+        assert_eq!(sent[0].rtt_ms, 450);
+        assert_eq!(sent[0].loss_per_mille, 0);
+        assert_eq!(
+            sent[0].arena_stream_id,
+            guard.clients[&slow].arena_stream_id
+        );
+        assert_eq!(warnings(&rx_fast), []);
+        assert_eq!(
+            guard.clients[&slow].player.ship, 0,
+            "a warning moves no one"
+        );
     }
 
     #[test]

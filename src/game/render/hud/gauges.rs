@@ -28,6 +28,54 @@ pub(super) fn ping_warning_color(ping_ms: u32) -> Option<TextColor> {
 }
 
 impl Game {
+    pub(super) fn draw_player_list_frame_rate(&self) {
+        let digits = self.frame_rate.digits();
+        let size = self.assets.energy_font.frame_size * 0.5;
+        let suffix = " fps";
+        let right = screen_width() - 4.0;
+        // Ping starts four pixels below the full-size energy digits. Leave
+        // another four-pixel gap below that twelve-pixel readout.
+        let y = self.assets.energy_font.frame_size.y
+            + 8.0
+            + size.y.max(self.assets.tall_font.line_height());
+        let mut x =
+            right - self.assets.tall_font.measure_width(suffix) - digits.len() as f32 * size.x;
+        for byte in digits.bytes() {
+            if byte.is_ascii_digit() {
+                draw_texture_ex(
+                    &self.assets.energy_font.texture,
+                    x,
+                    y,
+                    WHITE,
+                    DrawTextureParams {
+                        dest_size: Some(size),
+                        source: Some(
+                            self.assets
+                                .energy_font
+                                .source_for_frame((byte - b'0') as usize),
+                        ),
+                        ..Default::default()
+                    },
+                );
+            } else {
+                // The energy sheet contains digits only; use the matching
+                // blue bitmap text for the decimal point/startup placeholder.
+                self.assets.tall_font.draw_scaled(
+                    &char::from(byte).to_string(),
+                    x,
+                    y,
+                    TextColor::Blue,
+                    TextAlign::Left,
+                    1.0,
+                );
+            }
+            x += size.x;
+        }
+        self.assets
+            .tall_font
+            .draw_scaled(suffix, right, y, TextColor::Blue, TextAlign::Right, 1.0);
+    }
+
     pub(super) fn draw_connection_ping(&self) {
         if !self.networked_play {
             return;

@@ -433,6 +433,7 @@ are under `src/`; `server/` means `src/bin/zubspace_server/`.
 | `0x81` | ZS | 30 | Connection-quality probe | `protocol/connection_quality.rs` |
 | `0x83` | ZS | 44 | Connection-quality directive | `protocol/connection_quality.rs` |
 | `0x84` | ZS | up to 1,100 | Realtime event batch | `protocol/realtime_event.rs` |
+| `0x86` | ZS | 23 | Connection-quality warning, version 1 (advisory) | `protocol/connection_quality.rs` |
 | `0x8d` | ZS | 28 | Spawn-idle spectator transition, version 1 | `protocol/forced_spectator.rs` |
 
 The client parses further Continuum server packets (positions, KOTH, UFO,

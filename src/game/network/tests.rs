@@ -1759,6 +1759,36 @@ fn network_spawn_ignores_replayed_brick_overlays_but_not_authored_brick_tiles() 
 }
 
 #[test]
+fn door_close_relocation_uses_the_servers_static_spawn_not_the_live_brick_map() {
+    let mut game = Game::new_network_authority_test();
+    game.networked_play = true;
+    let map_index = game.map_index;
+    let center = (game.maps[map_index].width / 2) as i32;
+    for y in center - 2..=center + 2 {
+        for x in center - 2..=center + 2 {
+            game.maps[map_index].set_tile(x, y, 0);
+        }
+    }
+    let canonical = game.player_spawn_position();
+    assert!(game.install_brick_tile(ivec2(center, center - 1), 120.0, 7));
+    assert_ne!(
+        game.map().spawn_position(),
+        canonical,
+        "the brick moves the live map's spawn to a neighbouring tile"
+    );
+    game.ship.pos = canonical + vec2(900.0, -400.0);
+    game.ship.vel = vec2(40.0, -12.0);
+    game.pending_same_life_movement_boundary_position = false;
+
+    let relocated = game.relocate_ship_for_closed_door();
+
+    assert_eq!(relocated, canonical, "the server replays the static spawn");
+    assert_eq!(game.ship.pos, canonical);
+    assert_eq!(game.ship.vel, Vec2::ZERO);
+    assert!(game.pending_same_life_movement_boundary_position);
+}
+
+#[test]
 fn initial_brick_replay_survives_map_geometry_publication_without_restarting_age() {
     for clear_before_map in [false, true] {
         let mut game = Game::new_network_authority_test();
@@ -2727,6 +2757,208 @@ fn receipted_warp_and_repel_do_not_leave_a_phantom_cancellation_boundary() {
     assert!(!newer_same_life_boundary_requires_correction_cancellation(
         false, None, None,
     ));
+}
+
+fn warp_prize_test_game() -> Game {
+    let mut game = Game::new_network_authority_test();
+    game.install_network_authority_test_scope(
+        AuthorityScopeIdentity {
+            server_session_id: Some(77),
+            arena_stream_id: Some(88),
+            player_id: Some(9),
+            life_seq: Some(41),
+            alive: Some(true),
+        },
+        AuthorityReadiness {
+            joined: true,
+            arena_epoch: Some(88),
+            settings: true,
+            security: true,
+            map: true,
+        },
+        88,
+    );
+    game.network_prize_baseline_pending = false;
+    game.ship.pos = vec2(7_136.5, 8_920.25);
+    game.ship.vel = vec2(115.5, -63.0);
+    game.ship.orientation = 0.325;
+    game.ship.energy = 1_600.0;
+    game.ship.max_energy = 1_700.0;
+    game
+}
+
+fn warp_prize_ack(collectible_id: u32) -> ScopedPrizePickupAck {
+    scoped_prize_pickup_ack(
+        PrizePickupAck {
+            server_session_id: 0,
+            arena_stream_id: 0,
+            player_id: 0,
+            collectible_id,
+            x: 7_136,
+            y: 8_920,
+            prize_id: PrizeKind::Warp.protocol_id(),
+            authoritative_energy: 1_700,
+            life_seq: 41,
+            prize_state_revision: 37,
+            engine_shutdown_until_tick: None,
+            engine_shutdown_application_required: false,
+        },
+        77,
+        88,
+        9,
+    )
+}
+
+fn neutral_input_packet(sequence: u16) -> ClientInputRecordPacket {
+    ClientInputRecordPacket {
+        base_seq: sequence,
+        inputs: vec![crate::protocol::PlayerInputRecord {
+            combat_view_receipt: crate::combat_timeline::CombatViewReceiptV1::unavailable(sequence),
+            ..Default::default()
+        }],
+    }
+}
+
+#[test]
+fn warp_prize_relocates_on_the_report_that_first_carries_its_marker() {
+    let mut game = warp_prize_test_game();
+    let spawn = game.player_spawn_position();
+    assert!(game.apply_network_prize_pickup_ack(warp_prize_ack(7_807)));
+    // The ACK stages the relocation: no position may carry the marker
+    // with a state that is not the spawn report itself.
+    assert_eq!(game.ship.pos, vec2(7_136.5, 8_920.25));
+    assert!(game.staged_warp_relocation_pending());
+    assert!(game.pending_same_life_movement_boundary_position);
+    assert_eq!(
+        game.client_position_update(40_188, 0, neutral_input_packet(40_188), None)
+            .warp_collectible_id,
+        None
+    );
+
+    // On prod a gameplay step ran between the ACK and the next emitted
+    // position, so the first marked report already had thrust on it and the
+    // server rejected every report after it.
+    game.ship.pos += vec2(0.05, 0.02);
+    game.ship.vel = vec2(2.8, 1.4);
+    assert!(
+        !game.apply_staged_warp_relocation_for_emission(1, false),
+        "a weapon report cannot also be the relocation report"
+    );
+    assert!(!game.apply_staged_warp_relocation_for_emission(0, true));
+    assert!(game.staged_warp_relocation_pending());
+    assert!(game.staged_warp_relocation_forces_next_report());
+    game.pending_repel_application =
+        Some(crate::continuum_position::ClientRepelApplicationMarker {
+            snapshot_id: 933,
+            application_sequence: 40_188,
+            delivery_generation: 7,
+        });
+    assert!(
+        !game.staged_warp_relocation_forces_next_report(),
+        "a Warp waiting on a Repel receipt does not force every step's report"
+    );
+    game.pending_repel_application = None;
+
+    assert!(game.apply_staged_warp_relocation_for_emission(0, false));
+    let report = game.client_position_update(40_189, 0, neutral_input_packet(40_189), None);
+    assert_eq!(report.warp_collectible_id, Some(7_807));
+    assert_eq!((report.velocity_x, report.velocity_y), (0, 0));
+    let (x, y, velocity_x, velocity_y, _) = report.canonical_state.values();
+    assert_eq!(x.to_bits(), spawn.x.to_bits());
+    assert_eq!(y.to_bits(), spawn.y.to_bits());
+    assert_eq!(velocity_x.to_bits(), 0.0_f32.to_bits());
+    assert_eq!(velocity_y.to_bits(), 0.0_f32.to_bits());
+    assert!(!game.staged_warp_relocation_pending());
+    assert!(
+        !game.apply_staged_warp_relocation_for_emission(0, false),
+        "the relocation happens once"
+    );
+}
+
+#[test]
+fn a_correction_detected_at_or_after_the_warp_report_overtakes_its_marker() {
+    let published = std::collections::VecDeque::from([u16::MAX - 1, u16::MAX, 0]);
+    assert!(warp_report_overtaken_by_correction(
+        true,
+        Some(41),
+        &published,
+        41,
+        60
+    ));
+    assert!(warp_report_overtaken_by_correction(
+        true,
+        Some(41),
+        &published,
+        41,
+        u16::MAX - 1
+    ));
+    // A correction detected before the report can still be overtaken by it.
+    assert!(!warp_report_overtaken_by_correction(
+        true,
+        Some(41),
+        &published,
+        41,
+        u16::MAX - 2
+    ));
+    assert!(!warp_report_overtaken_by_correction(
+        false,
+        Some(41),
+        &published,
+        41,
+        60
+    ));
+    assert!(!warp_report_overtaken_by_correction(
+        true,
+        Some(41),
+        &published,
+        42,
+        60
+    ));
+    assert!(!warp_report_overtaken_by_correction(
+        true,
+        Some(41),
+        &std::collections::VecDeque::new(),
+        41,
+        60
+    ));
+}
+
+#[test]
+fn an_unadmitted_warp_report_no_longer_cancels_every_later_correction() {
+    // Prod: the last admitted position was 40187, the Warp report 40189 was
+    // never admitted, and history-gap corrections detected at 40252 and later
+    // were each cancelled for the pending Warp until the player left.
+    for (detected_sequence, overtaken) in [(40_252_u16, true), (40_150, false)] {
+        let mut game = warp_prize_test_game();
+        assert!(game.apply_network_prize_pickup_ack(warp_prize_ack(7_807)));
+        assert!(game.apply_staged_warp_relocation_for_emission(0, false));
+        game.pending_same_life_movement_boundary_position = false;
+        game.pending_warp_relocation_sequences.push_back(40_189);
+        game.next_input_seq = 40_260;
+        game.apply_network_actions(&ClientProtocolActions {
+            events: vec![ClientProtocolEvent::MovementCorrected(MovementCorrection {
+                reason: MovementCorrection::REASON_INPUT_HISTORY_GAP,
+                correction_generation: 1,
+                ..movement_correction(detected_sequence)
+            })],
+            ..Default::default()
+        });
+        let application = game
+            .client_authority
+            .correction_application_to_submit()
+            .expect("the correction is answered either way");
+        if overtaken {
+            assert_eq!(application.intent, MovementCorrectionApplied::INTENT_APPLY);
+            assert_eq!(game.pending_warp_relocation_collectible_id, None);
+            assert!(game.pending_warp_relocation_sequences.is_empty());
+        } else {
+            assert_eq!(
+                application.intent,
+                MovementCorrectionApplied::INTENT_CANCEL_NEWER_BOUNDARY
+            );
+            assert_eq!(game.pending_warp_relocation_collectible_id, Some(7_807));
+        }
+    }
 }
 
 #[test]
@@ -7630,9 +7862,11 @@ fn three_poll_hard_replacement_retires_every_held_gameplay_generation_before_rel
         game.repel_delivery_application_rejects,
     );
     assert!(
-        game.warps.len() >= 2,
-        "new Warp and SetCoordinates apply once"
+        game.staged_warp_relocation_pending()
+            && game.pending_warp_relocation_collectible_id == Some(2_001),
+        "the new Warp is staged for its relocation report"
     );
+    assert!(!game.warps.is_empty(), "SetCoordinates applies once");
     assert!(
         game.player_bounty > 0,
         "only the new collected prize presents"
@@ -9788,5 +10022,103 @@ fn private_bounty_snapshot_and_global_death_do_not_double_award_in_either_order(
             game.player_bounty, 31,
             "an older private revision cannot rewind the award"
         );
+    }
+}
+
+#[test]
+fn quality_warnings_explain_the_cause_only_to_the_current_scope_in_a_ship() {
+    let mut game = Game::new_network_authority_test();
+    let scope = AuthorityScopeIdentity {
+        server_session_id: Some(10),
+        arena_stream_id: Some(20),
+        player_id: Some(1),
+        life_seq: None,
+        alive: None,
+    };
+    let readiness = AuthorityReadiness {
+        joined: true,
+        arena_epoch: Some(40),
+        settings: true,
+        security: true,
+        map: true,
+    };
+    game.install_network_authority_test_scope(scope, readiness, 40);
+    game.spectator_mode = false;
+    let warning = crate::protocol::ConnectionQualityWarning {
+        server_session_id: 10,
+        arena_stream_id: 20,
+        reason: crate::protocol::ConnectionQualityWarningReason::ShotsRefused,
+        rtt_ms: 311,
+        loss_per_mille: 0,
+    };
+    let apply = |game: &mut Game, warning| {
+        game.apply_network_actions(&ClientProtocolActions {
+            events: vec![ClientProtocolEvent::ConnectionQualityWarning(warning)],
+            outbound_packets: Vec::new(),
+            authority_admission: Vec::new(),
+        });
+    };
+
+    for stale in [
+        crate::protocol::ConnectionQualityWarning {
+            server_session_id: 11,
+            ..warning
+        },
+        crate::protocol::ConnectionQualityWarning {
+            arena_stream_id: 21,
+            ..warning
+        },
+    ] {
+        apply(&mut game, stale);
+    }
+    assert!(game.notifications.is_empty(), "another session or arena");
+    game.spectator_mode = true;
+    apply(&mut game, warning);
+    assert!(game.notifications.is_empty(), "a spectator fires no shots");
+    game.spectator_mode = false;
+    apply(&mut game, warning);
+    assert_eq!(game.notifications.len(), 1);
+    assert_eq!(
+        game.notifications[0].message,
+        "Your shots aren't counting because your connection is too slow (311 ms ping)."
+    );
+
+    use crate::protocol::ConnectionQualityWarningReason::{HighLatency, PacketLoss};
+    assert_eq!(
+        connection_quality_warning_lines(crate::protocol::ConnectionQualityWarning {
+            reason: HighLatency,
+            rtt_ms: 0,
+            ..warning
+        }),
+        [
+            "Your connection is very slow: shots and hits may not count.",
+            "If it doesn't improve, you may be moved to spectator.",
+        ]
+    );
+    assert_eq!(
+        connection_quality_warning_lines(crate::protocol::ConnectionQualityWarning {
+            reason: PacketLoss,
+            loss_per_mille: 125,
+            ..warning
+        }),
+        [
+            "Your connection is unstable (13% of packets lost).",
+            "If it doesn't improve, you may be moved to spectator.",
+        ]
+    );
+    // Notifications are single lines; 85 characters (7 px each) fit a 640 px window.
+    for reason in [
+        crate::protocol::ConnectionQualityWarningReason::ShotsRefused,
+        HighLatency,
+        PacketLoss,
+    ] {
+        for line in connection_quality_warning_lines(crate::protocol::ConnectionQualityWarning {
+            reason,
+            rtt_ms: u16::MAX,
+            loss_per_mille: 1_000,
+            ..warning
+        }) {
+            assert!(line.len() <= 85, "{line}");
+        }
     }
 }

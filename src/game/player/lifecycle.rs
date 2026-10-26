@@ -237,6 +237,10 @@ impl Game {
         }
     }
 
+    pub(crate) fn chat_input_active(&self) -> bool {
+        self.chat.active
+    }
+
     fn capture_chat_characters(&mut self) {
         while let Some(ch) = get_char_pressed() {
             // Miniquad queues printable keypresses independently of key-down
@@ -1776,5 +1780,24 @@ mod initial_presentation_tests {
         game.spectator_mode = true;
         game.network_prize_baseline_pending = false;
         assert!(game.initial_presentation_ready());
+    }
+}
+
+#[cfg(test)]
+mod mouse_layer_tests {
+    use super::*;
+
+    #[test]
+    fn mouse_weapon_actions_are_consumed_by_menu_chat_and_player_list() {
+        let mut game = Game::new_network_authority_test();
+        for layer in 0..4 {
+            game.menu_visible = layer == 0;
+            game.chat.active = layer == 1;
+            game.scoreboard_visible = layer == 2;
+            let mut input =
+                RenderInputContext::from_mouse([], [MouseButton::Left, MouseButton::Right]);
+            let actions = game.process_semantic_actions(input.drain_actions());
+            assert_eq!(actions.len(), if layer == 3 { 2 } else { 0 });
+        }
     }
 }

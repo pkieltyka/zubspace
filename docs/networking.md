@@ -56,7 +56,9 @@ transport and the wire.
 5. **Login.** The client sends a Continuum password login (`0x24`) carrying the
    player name and the browser's stored numeric identity. The identity is not
    authenticated; the server only rejects invalid names and identities and
-   those already in use.
+   those already in use. A registered peer whose login has not been accepted
+   within 90 s is disconnected, which frees its player id and UDP port; the
+   browser retries an in-use identity on the same connection for at most 45 s.
    On acceptance (`0x0a`) the client sends the arena login (`0x01`), which has
    one extra byte at offset 27: the newest **client protocol revision** the
    build understands (currently 3). A login without it counts as revision 0.
@@ -389,8 +391,9 @@ that cannot be tracked waits instead of being sent untracked. What each
 transition means for gameplay is in [Server authority](authoritative_server.md).
 
 Other Zubspace packets on the reliable channel: from the server, `0x60` hidden
-prize spawn, `0x6c` QA trace context, `0x83` connection-quality directive and
-`0x8d` spawn-idle spectator; from the client, the `0x80` player experience
+prize spawn, `0x6c` QA trace context, `0x83` connection-quality directive,
+`0x86` connection-quality warning ([Connection quality](connection-quality.md#warnings))
+and `0x8d` spawn-idle spectator; from the client, the `0x80` player experience
 report ([Observability](observability.md)) and the `0x85` page visibility
 notice ([Connection quality](connection-quality.md#measurement-window)).
 

@@ -529,6 +529,7 @@ pub(crate) struct ClientHandle {
     pub(crate) maxed_spawn_loadout: bool,
     pub(crate) spawn_idle: crate::spawn_idle::SpawnIdleTracker,
     pub(crate) session_summary: crate::session_summary::SessionSummary,
+    pub(crate) quality_warnings: crate::connection_quality::QualityWarnings,
     /// Internal transport incarnation. Unlike the reusable Continuum player
     /// id, this value is allocated once and never reused by this server state.
     pub(crate) session_id: PlayerSessionId,

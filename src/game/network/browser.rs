@@ -670,6 +670,12 @@ impl Game {
                     } else {
                         self.pending_repel_application
                     };
+                    if !emit_ship_reset_position {
+                        self.apply_staged_warp_relocation_for_emission(
+                            weapon,
+                            repel_application.is_some(),
+                        );
+                    }
                     let mut update = self.client_position_update(
                         input_sequence,
                         weapon,
@@ -770,7 +776,10 @@ impl Game {
                     self.pending_weapon = 0;
                     self.cancel_pending_weapon_prediction();
                     self.ship.flash = false;
-                    self.pending_same_life_movement_boundary_position = false;
+                    // A Warp that could not ride this report stays an
+                    // unpublished boundary and forces the next one.
+                    self.pending_same_life_movement_boundary_position =
+                        self.staged_warp_relocation_forces_next_report();
                 }
             }
         }

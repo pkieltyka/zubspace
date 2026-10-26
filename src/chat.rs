@@ -1,6 +1,6 @@
 use crate::protocol::ChatMessageRequest;
 
-pub(crate) const CHAT_MAX_CHARS: usize = 96;
+pub(crate) use crate::chat_limits::CHAT_MAX_CHARS;
 pub(crate) const CHAT_HISTORY_LIMIT: usize = 64;
 pub(crate) const CHAT_SENT_HISTORY_LIMIT: usize = 16;
 
@@ -147,7 +147,9 @@ impl ChatState {
 }
 
 pub(crate) fn push_chat_char(input: &mut String, ch: char) {
-    if input.chars().count() >= CHAT_MAX_CHARS {
+    if input.chars().count() >= CHAT_MAX_CHARS
+        || input.len() + ch.len_utf8() > crate::chat_limits::CHAT_MAX_BYTES
+    {
         return;
     }
 
@@ -466,5 +468,25 @@ mod network_info_tests {
         let missing = network_info_messages(NetworkInfoCommand::Lag, None);
         assert!(missing[0].contains("unavailable"));
         assert!(!missing.join(" ").contains("0 ms"));
+    }
+}
+
+#[cfg(test)]
+mod extended_edit_tests {
+    use super::*;
+
+    #[test]
+    fn chat_edits_and_submits_a_three_line_length_message() {
+        let mut chat = ChatState::default();
+        chat.begin_input();
+        for ch in "x".repeat(255).chars() {
+            chat.push_char(ch);
+        }
+        chat.push_char('🚀');
+        chat.push_char('z');
+        assert_eq!(chat.input.chars().count(), 256);
+        chat.backspace();
+        assert_eq!(chat.input, "x".repeat(255));
+        assert_eq!(chat.submit_input(), Some("x".repeat(255)));
     }
 }

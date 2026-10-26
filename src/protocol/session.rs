@@ -44,6 +44,7 @@ pub enum ClientProtocolEvent {
     FrequencyCutoverAcknowledged(FrequencyCutoverAck),
     ShipChangeRejected(ShipChangeRejected),
     ConnectionQualityDirective(ConnectionQualityDirective),
+    ConnectionQualityWarning(ConnectionQualityWarning),
     SpawnIdleSpectator(SpawnIdleSpectator),
     LifecycleBaselineAccepted(LifecycleBaselineAccepted),
     WarpRelocationAccepted(WarpRelocationAccepted),

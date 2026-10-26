@@ -171,6 +171,7 @@ impl Game {
         }
         if self.scoreboard_visible {
             self.draw_scoreboard();
+            self.draw_player_list_frame_rate();
         }
     }
 
@@ -281,7 +282,7 @@ fn hud_max_chars(available_width: f32, glyph_width: f32) -> usize {
 
 fn wrap_hud_text(text: &str, max_chars: usize) -> Vec<String> {
     let max_chars = max_chars.max(1);
-    if text.len() <= max_chars {
+    if text.chars().count() <= max_chars {
         return vec![text.to_string()];
     }
 
@@ -290,7 +291,7 @@ fn wrap_hud_text(text: &str, max_chars: usize) -> Vec<String> {
     for word in text.split_whitespace() {
         if current.is_empty() {
             current.push_str(word);
-        } else if current.len() + 1 + word.len() <= max_chars {
+        } else if current.chars().count() + 1 + word.chars().count() <= max_chars {
             current.push(' ');
             current.push_str(word);
         } else {
@@ -298,8 +299,13 @@ fn wrap_hud_text(text: &str, max_chars: usize) -> Vec<String> {
             current = word.to_string();
         }
 
-        while current.len() > max_chars {
-            let rest = current.split_off(max_chars);
+        while current.chars().count() > max_chars {
+            let boundary = current
+                .char_indices()
+                .nth(max_chars)
+                .expect("longer than max_chars")
+                .0;
+            let rest = current.split_off(boundary);
             lines.push(current);
             current = rest;
         }

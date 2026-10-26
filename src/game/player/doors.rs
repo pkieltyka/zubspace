@@ -67,25 +67,22 @@ impl Game {
             let ship_radius = self.ship_tuning().radius_pixels;
             let tuning = self.tuning;
 
+            let map = &mut self.maps[self.map_index];
+            let before_seed = map.door_seed;
+            advance_map_door_seed_steps(map, self.tuning.door_mode, 1);
+            let after_seed = map.door_seed;
+            if entity_needs_door_relocation(
+                self.map(),
+                self.ship.pos,
+                ship_radius,
+                before_seed,
+                after_seed,
+            ) {
+                warp_positions.push(self.relocate_ship_for_closed_door());
+            }
+
             {
                 let map = &mut self.maps[self.map_index];
-                let before_seed = map.door_seed;
-                advance_map_door_seed_steps(map, self.tuning.door_mode, 1);
-                let after_seed = map.door_seed;
-
-                if entity_needs_door_relocation(
-                    map,
-                    self.ship.pos,
-                    ship_radius,
-                    before_seed,
-                    after_seed,
-                ) {
-                    self.ship.pos = map.spawn_position();
-                    self.ship.vel = Vec2::ZERO;
-                    self.pending_same_life_movement_boundary_position = true;
-                    warp_positions.push(self.ship.pos);
-                }
-
                 for bot in &mut self.bots {
                     let bot_radius = tuning.ship(bot.ship_type).radius_pixels;
                     if bot.respawn_timer <= 0.0
@@ -128,6 +125,17 @@ impl Game {
                 self.warps.push(WarpEffect { pos, age: 0.0 });
             }
         }
+    }
+
+    /// A door closing on the ship moves it to spawn with no velocity. The
+    /// server replays this from its static map, so a networked ship must use
+    /// the same spawn; the live map's bricks and door states would pick a
+    /// neighbouring tile and the server would refuse every later position.
+    pub(in crate::game) fn relocate_ship_for_closed_door(&mut self) -> Vec2 {
+        self.ship.pos = self.player_spawn_position();
+        self.ship.vel = Vec2::ZERO;
+        self.pending_same_life_movement_boundary_position = true;
+        self.ship.pos
     }
 }
 

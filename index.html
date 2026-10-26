@@ -194,6 +194,8 @@
           bytes: 0, reason: "capture_not_installed",
         };
         const canvas = document.querySelector("#glcanvas");
+        // Right-click is an optional bomb control on the game canvas only.
+        canvas?.addEventListener("contextmenu", event => event.preventDefault());
         const identityStorageKey = "zubspace.identity.v1";
         const arenaStorageKey = "zubspace.arena.v1";
         let arenaIds = new Set(["chaos-zone", "extreme"]);

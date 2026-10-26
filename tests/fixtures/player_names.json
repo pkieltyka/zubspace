@@ -147,7 +147,7 @@
   {
     "raw": "Ace Pilot",
     "normalized": "Ace Pilot",
-    "valid": false
+    "valid": true
   },
   {
     "raw": "Ace\tPilot",
@@ -192,12 +192,12 @@
   {
     "raw": "bad_name",
     "normalized": "bad_name",
-    "valid": false
+    "valid": true
   },
   {
     "raw": "bad-name",
     "normalized": "bad-name",
-    "valid": false
+    "valid": true
   },
   {
     "raw": "\u00e9",
@@ -222,6 +222,71 @@
   {
     "raw": "Ace\u007f",
     "normalized": "Ace\u007f",
+    "valid": false
+  },
+  {
+    "raw": "mr rogers",
+    "normalized": "mr rogers",
+    "valid": true
+  },
+  {
+    "raw": "h e l l o",
+    "normalized": "h e l l o",
+    "valid": true
+  },
+  {
+    "raw": "mr_rogers",
+    "normalized": "mr_rogers",
+    "valid": true
+  },
+  {
+    "raw": "mr-rogers",
+    "normalized": "mr-rogers",
+    "valid": true
+  },
+  {
+    "raw": "mr rogers-1_*",
+    "normalized": "mr rogers-1_*",
+    "valid": true
+  },
+  {
+    "raw": "  mr rogers  ",
+    "normalized": "mr rogers",
+    "valid": true
+  },
+  {
+    "raw": "a b c d e f gh",
+    "normalized": "a b c d e f gh",
+    "valid": true
+  },
+  {
+    "raw": "a b c d e f ghi",
+    "normalized": "a b c d e f ghi",
+    "valid": false
+  },
+  {
+    "raw": "mr  rogers",
+    "normalized": "mr  rogers",
+    "valid": false
+  },
+  {
+    "raw": "h  e l l o",
+    "normalized": "h  e l l o",
+    "valid": false
+  },
+  {
+    "raw": "mr\trogers",
+    "normalized": "mr\trogers",
+    "valid": false
+  },
+  {
+    "raw": "mr\nrogers",
+    "normalized": "mr\nrogers",
+    "valid": false
+  },
+  {
+    "raw": "mr\u2009rogers",
+    "normalized": "mr\u2009rogers",
     "valid": false
   }
 ]

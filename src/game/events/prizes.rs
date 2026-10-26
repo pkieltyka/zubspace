@@ -121,6 +121,41 @@ impl Game {
         self.apply_network_prize_pickup_ack_after_repel(ack)
     }
 
+    /// Perform a staged positive-Warp relocation on the position report that
+    /// first carries its marker, so that report is exactly the spawn with
+    /// zero velocity. A report that also carries a weapon or Repel marker is
+    /// not a valid relocation report; the Warp waits for the next one.
+    #[cfg(any(test, target_arch = "wasm32"))]
+    pub(in crate::game) fn apply_staged_warp_relocation_for_emission(
+        &mut self,
+        weapon: u16,
+        repel_application: bool,
+    ) -> bool {
+        if self.pending_warp_relocation_collectible_id.is_none() {
+            self.pending_warp_relocation_staged = false;
+            return false;
+        }
+        if !self.pending_warp_relocation_staged || weapon != 0 || repel_application {
+            return false;
+        }
+        self.pending_warp_relocation_staged = false;
+        self.activate_warp_prize();
+        true
+    }
+
+    /// An ACKed Warp whose relocation report has not been emitted yet.
+    #[cfg(any(test, target_arch = "wasm32"))]
+    pub(in crate::game) fn staged_warp_relocation_pending(&self) -> bool {
+        self.pending_warp_relocation_staged && self.pending_warp_relocation_collectible_id.is_some()
+    }
+
+    /// A staged Warp the last report could not carry forces the next report,
+    /// except while it waits for a pending Repel's receipt.
+    #[cfg(any(test, target_arch = "wasm32"))]
+    pub(in crate::game) fn staged_warp_relocation_forces_next_report(&self) -> bool {
+        self.staged_warp_relocation_pending() && self.pending_repel_application.is_none()
+    }
+
     pub(in crate::game) fn apply_deferred_warp_pickup_acks(&mut self) {
         while self.pending_repel_application.is_none() {
             let Some(scoped) = self.client_authority.pop_deferred_warp_pickup_ack() else {
@@ -529,7 +564,16 @@ impl Game {
                     notification =
                         Some(PrizeNotification::from(warp_prize_notification_after(true)));
                 } else {
-                    self.activate_warp_prize();
+                    if self.networked_play && self.pending_warp_relocation_collectible_id.is_some()
+                    {
+                        // Gameplay steps can run before the next position is
+                        // emitted. Relocating now would let them add motion
+                        // to the one-shot spawn report the server checks.
+                        self.pending_warp_relocation_staged = true;
+                        self.pending_same_life_movement_boundary_position = true;
+                    } else {
+                        self.activate_warp_prize();
+                    }
                     notification = Some(PrizeNotification::from(warp_prize_notification_after(
                         false,
                     )));

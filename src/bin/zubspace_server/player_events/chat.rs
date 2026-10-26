@@ -46,7 +46,10 @@ pub(crate) fn chat_packet_from_request(sender_id: u16, request: &[u8]) -> Option
     if request.len() < 6 || request[0] != CHAT_MESSAGE_REQUEST {
         return None;
     }
-    let message = read_capped_c_string(&request[5..], 200);
+    let message = read_capped_c_string(&request[5..], crate::chat_limits::CHAT_MAX_BYTES)
+        .chars()
+        .take(crate::chat_limits::CHAT_MAX_CHARS)
+        .collect::<String>();
     if message.is_empty() {
         return None;
     }

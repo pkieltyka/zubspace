@@ -6,12 +6,11 @@ const MENU_MARGIN: f32 = 12.0;
 const MENU_ROW_HEIGHT: f32 = 12.0;
 const MENU_TEXT_SCALE: f32 = 1.0;
 
-const MENU_LEFT_ROWS: [&str; 7] = [
+const MENU_LEFT_ROWS: [&str; 6] = [
     "Esc = Resume",
     "Q = Leave Arena",
     "Space = Player List",
     "K = Controls",
-    "F = Fullscreen",
     "Enter = Chat",
     "Alt = Full Map",
 ];
@@ -101,6 +100,23 @@ impl Game {
             y += MENU_ROW_HEIGHT;
         }
 
+        let footer_y = rect.y + rect.h - 18.0;
+        draw_rectangle(
+            left_x,
+            footer_y - 6.0,
+            120.0,
+            1.0,
+            Color::from_rgba(80, 105, 130, 220),
+        );
+        self.assets.tall_font.draw_scaled(
+            "F = Fullscreen",
+            left_x,
+            footer_y,
+            TextColor::White,
+            TextAlign::Left,
+            MENU_TEXT_SCALE,
+        );
+
         self.assets.tall_font.draw_scaled(
             "S = Spectator",
             right_x,
@@ -143,5 +159,12 @@ mod tests {
         let used_right_height = 20.0 + (MENU_SHIP_ROWS.len() as f32 + 1.0) * MENU_ROW_HEIGHT;
         assert!(used_left_height <= MENU_BASE_HEIGHT);
         assert!(used_right_height <= MENU_BASE_HEIGHT);
+        // The detached fullscreen footer stays below the left-hand options,
+        // including the panel's minimum supported height.
+        for height in [150.0, MENU_BASE_HEIGHT] {
+            let footer_top = height - 18.0;
+            assert!(used_left_height < footer_top - 6.0);
+            assert!(footer_top + 12.0 <= height - 4.0);
+        }
     }
 }

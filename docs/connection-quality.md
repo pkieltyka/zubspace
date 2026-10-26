@@ -2,8 +2,10 @@
 
 The server measures every player's link itself, with challenge/echo probes on
 the unreliable game channel. Nothing the client reports (pings, traces, input
-gaps) feeds the measurement. The readings are used for three things:
+gaps) feeds the measurement. The readings are used for four things:
 
+- **Warnings.** A player whose link is unhealthy, or whose shots keep being
+  refused because their view of the game arrives too late, is told why.
 - **Forced spectator.** A player whose link stays bad for 10 seconds is moved to
   spectator for one minute and can return once the link is healthy again.
 - **Presentation delay.** Under the default `observer_network_profile = "auto"`,
@@ -139,6 +141,33 @@ an account system.
 A separate spectator move for players idling at spawn uses its own `0x8d`
 packet and is unrelated to connection quality.
 
+## Warnings
+
+A player in a ship gets a reliable, advisory `0x86` warning, at most one a
+minute whatever the reason, when either:
+
+- **their link is unhealthy for 5 s:** a reading with at least 20 outcomes
+  shows loss of at least `quality_recovery_loss_per_mille` or an average RTT
+  of at least `quality_recovery_rtt_ms`, the same limits a held player must
+  get below to return. This is the band in which play suffers before (or
+  without) a forced move; on prod it is 300–400 ms or 10–15% loss;
+- **3 of their shots are refused within 10 s** because the server could not
+  verify the view they fired from (a `combat_view_*` cause; see
+  [Hit validation](authoritative_server.md#72-hit-validation-the-combat-view-timeline)).
+  This happens to players around 300 ms and above, whose view of the game
+  reaches the server too late.
+
+```text
+type:u8 = 0x86 | version:u8 = 1 | server_session_id:u64 | arena_stream_id:u64 |
+reason:u8 (0 shots refused, 1 high latency, 2 packet loss) | rtt_ms:u16 | loss_per_mille:u16
+```
+
+The RTT and loss are the player's current reading (0 when there is none yet).
+The client shows a notice naming the cause, such as "Your shots aren't
+counting because your connection is too slow (311 ms ping)", only for its
+current session and arena and only while in a ship. A warning changes no state: it
+neither moves the player nor affects a hold.
+
 ## Presentation delay
 
 Under `observer_network_profile = "auto"` the server sets each player's remote
@@ -204,6 +233,8 @@ Our prod and dev servers set `quality_max_rtt_ms = 400` and
   visibility change is an INFO `page visibility changed` line (`hidden`,
   `measurement` paused or resumed); a voided hidden claim is a WARN
   `page reported hidden while sending gameplay; measurement resumed`.
+  Each warning is an INFO `connection quality warning` line (`reason`,
+  `rtt_ms`, `loss_per_mille`).
 
 See [Observability](observability.md) for the listener and log setup.
 
