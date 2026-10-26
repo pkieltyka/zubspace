@@ -744,6 +744,7 @@ struct FrequencyAdmissionSnapshot {
     last_weapon_fire_tick: Option<u32>,
     last_gun_fire_tick: Option<u32>,
     last_bomb_fire_tick: Option<u32>,
+    weapon_cooldown_schedule: crate::authority::WeaponCooldownSchedule,
     objective_weapon_lock_until_tick: Option<u32>,
     last_accepted_weapon_data: Option<u16>,
     last_accepted_weapon_tick: Option<u32>,
@@ -844,6 +845,7 @@ impl FrequencyAdmissionSnapshot {
             last_weapon_fire_tick: client.last_weapon_fire_tick,
             last_gun_fire_tick: client.last_gun_fire_tick,
             last_bomb_fire_tick: client.last_bomb_fire_tick,
+            weapon_cooldown_schedule: client.weapon_cooldown_schedule,
             objective_weapon_lock_until_tick: client.objective_weapon_lock_until_tick,
             last_accepted_weapon_data: client.last_accepted_weapon_data,
             last_accepted_weapon_tick: client.last_accepted_weapon_tick,
@@ -953,6 +955,7 @@ impl FrequencyAdmissionSnapshot {
         client.last_weapon_fire_tick = self.last_weapon_fire_tick;
         client.last_gun_fire_tick = self.last_gun_fire_tick;
         client.last_bomb_fire_tick = self.last_bomb_fire_tick;
+        client.weapon_cooldown_schedule = self.weapon_cooldown_schedule;
         client.objective_weapon_lock_until_tick = self.objective_weapon_lock_until_tick;
         client.last_accepted_weapon_data = self.last_accepted_weapon_data;
         client.last_accepted_weapon_tick = self.last_accepted_weapon_tick;

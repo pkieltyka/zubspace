@@ -53,6 +53,7 @@ pub(crate) struct WeaponFireState {
     pub(crate) last_gun_fire_tick: Option<u32>,
     pub(crate) last_bomb_fire_tick: Option<u32>,
     pub(crate) last_special_weapon_request: Option<u8>,
+    pub(crate) schedule: WeaponCooldownSchedule,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -64,15 +65,46 @@ pub(crate) struct WeaponFireRequest {
     pub(crate) energy_cost: f32,
     pub(crate) fire_delay_ticks: u32,
     pub(crate) cross_fire_delay_ticks: u32,
+    /// The shooter's ship has EmpBomb: its bombs and mines leave guns and
+    /// Repel unlocked, as in the reference game.
+    pub(crate) emp_bomb: bool,
 }
 
-/// One-tick wall-clock allowance, proved independently for the exact last
-/// accepted weapon owning each deadline. It never clears the other class's
-/// outstanding deadline (notably bombs followed by guns on EMP ships).
+/// The reference game's `kRepelDelayTicks`: Repel waits this long after the
+/// last Repel, Burst, Thor, Decoy or non-EMP bomb/mine, and nothing else.
+pub(crate) const REPEL_DELAY_TICKS: u32 = 50;
+
+/// How far before its wall-clock deadline a weapon may be received when its
+/// exact 60 Hz input spacing proves the cooldown elapsed: the same bound the
+/// movement clock already lets logical input run ahead of receipt time
+/// (`MAX_GAMEPLAY_CATCH_UP_STEPS`). It absorbs network jitter, deferred
+/// admission and the 60 Hz server loop. The earliness is carried into the
+/// class's next deadline (`WeaponCooldownSchedule`), so a stream of shots
+/// can never fire faster than its authored delays.
+pub(crate) const PROVEN_COOLDOWN_ALLOWANCE_TICKS: u32 =
+    (crate::gameplay_rules::MAX_GAMEPLAY_CATCH_UP_STEPS as u32 * 5).div_ceil(3);
+
+/// Logical-input proof that the cooldown owned by the last accepted weapon
+/// has elapsed, proved independently for each deadline. It never clears the
+/// other class's outstanding deadline (notably bombs followed by guns on EMP
+/// ships).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct WeaponCooldownProof {
     pub(crate) gun: bool,
     pub(crate) bomb: bool,
+    pub(crate) repel: bool,
+}
+
+/// Deadline bookkeeping the per-class receipt ticks alone cannot carry: how
+/// many ticks before its wall-clock deadline each class's latest weapon was
+/// received, which later deadlines repay, and the reference game's separate
+/// Repel deadline (`next_repel_tick`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct WeaponCooldownSchedule {
+    pub(crate) gun_early_ticks: u32,
+    pub(crate) bomb_early_ticks: u32,
+    pub(crate) repel_lock_tick: Option<u32>,
+    pub(crate) repel_early_ticks: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -211,21 +243,34 @@ pub(crate) fn accept_weapon_fire_with_levels_and_charge_and_logical_cooldown(
             reject_reason: Some(WeaponFireRejectReason::InsufficientEnergy),
         };
     }
-    let fire_delay_passed = weapon_fire_delay_passed(state, weapon_type, request, logical_cooldown);
-    if !fire_delay_passed {
+    let Some(early_ticks) =
+        weapon_fire_delay_early_ticks(state, weapon_type, request, logical_cooldown)
+    else {
         return WeaponFireOutcome {
             accepted_weapon_data: 0,
             state,
             reject_reason: Some(WeaponFireRejectReason::Cooldown),
         };
-    }
+    };
 
     state.energy.spend_weapon_energy(charged_energy_cost);
     state.last_fire_tick = Some(request.server_tick);
     match weapon_cooldown_class(weapon_type) {
-        WeaponCooldownClass::Gun => state.last_gun_fire_tick = Some(request.server_tick),
-        WeaponCooldownClass::Bomb => state.last_bomb_fire_tick = Some(request.server_tick),
+        WeaponCooldownClass::Gun => {
+            state.last_gun_fire_tick = Some(request.server_tick);
+            state.schedule.gun_early_ticks = early_ticks;
+        }
+        // The reference game's Repel sets the bomb and gun deadlines like any
+        // other bomb-class weapon; only its own gate differs.
+        WeaponCooldownClass::Bomb | WeaponCooldownClass::Repel => {
+            state.last_bomb_fire_tick = Some(request.server_tick);
+            state.schedule.bomb_early_ticks = early_ticks;
+        }
         WeaponCooldownClass::None => {}
+    }
+    if weapon_sets_repel_lock(weapon_type, request.emp_bomb) {
+        state.schedule.repel_lock_tick = Some(request.server_tick);
+        state.schedule.repel_early_ticks = early_ticks;
     }
     state.weapons.spend_consumable(weapon_type);
     WeaponFireOutcome {
@@ -240,73 +285,113 @@ enum WeaponCooldownClass {
     None,
     Gun,
     Bomb,
+    Repel,
 }
 
 fn weapon_cooldown_class(weapon_type: u8) -> WeaponCooldownClass {
     match weapon_type {
         1 | 2 | 15 => WeaponCooldownClass::Gun,
+        5 => WeaponCooldownClass::Repel,
         3..=8 => WeaponCooldownClass::Bomb,
         _ => WeaponCooldownClass::None,
     }
 }
 
-fn weapon_fire_delay_passed(
+/// Weapons that set the reference game's `next_repel_tick`. Guns, bricks and
+/// rockets never do, and neither do bombs or mines on an EmpBomb ship.
+fn weapon_sets_repel_lock(weapon_type: u8, emp_bomb: bool) -> bool {
+    match weapon_type {
+        3 | 4 => !emp_bomb,
+        5..=8 => true,
+        _ => false,
+    }
+}
+
+/// Whether every deadline governing `weapon_type` allows it now, and if so
+/// how many ticks before the latest of them it was received.
+fn weapon_fire_delay_early_ticks(
     state: WeaponFireState,
     weapon_type: u8,
     request: WeaponFireRequest,
     logical_cooldown: WeaponCooldownProof,
-) -> bool {
+) -> Option<u32> {
     // A class whose reference lock is zero (guns after an EMP bomb) still
     // cannot move the accepted weapon timeline backwards.
     if state
         .last_fire_tick
         .is_some_and(|last| crate::continuum::continuum_tick_diff(request.server_tick, last) < 0)
     {
-        return false;
+        return None;
     }
+    let schedule = state.schedule;
+    let deadline = |anchor, anchor_early, delay, proven| {
+        cooldown_early_ticks(anchor, anchor_early, request.server_tick, delay, proven)
+    };
     match weapon_cooldown_class(weapon_type) {
-        WeaponCooldownClass::Gun => {
-            cooldown_passed(
+        WeaponCooldownClass::Gun => Some(
+            deadline(
                 state.last_gun_fire_tick,
-                request.server_tick,
+                schedule.gun_early_ticks,
                 request.fire_delay_ticks,
                 logical_cooldown.gun,
-            ) && cooldown_passed(
+            )?
+            .max(deadline(
                 state.last_bomb_fire_tick,
-                request.server_tick,
+                schedule.bomb_early_ticks,
                 request.cross_fire_delay_ticks,
                 logical_cooldown.bomb,
-            )
-        }
-        WeaponCooldownClass::Bomb => {
-            cooldown_passed(
+            )?),
+        ),
+        WeaponCooldownClass::Bomb => Some(
+            deadline(
                 state.last_bomb_fire_tick,
-                request.server_tick,
+                schedule.bomb_early_ticks,
                 request.fire_delay_ticks,
                 logical_cooldown.bomb,
-            ) && cooldown_passed(
+            )?
+            .max(deadline(
                 state.last_gun_fire_tick,
-                request.server_tick,
+                schedule.gun_early_ticks,
                 request.cross_fire_delay_ticks,
                 logical_cooldown.gun,
-            )
-        }
-        WeaponCooldownClass::None => true,
+            )?),
+        ),
+        // The reference game gates Repel only on `next_repel_tick`, never on
+        // the gun or bomb deadlines.
+        WeaponCooldownClass::Repel => deadline(
+            schedule.repel_lock_tick,
+            schedule.repel_early_ticks,
+            REPEL_DELAY_TICKS,
+            logical_cooldown.repel,
+        ),
+        WeaponCooldownClass::None => Some(0),
     }
 }
 
-fn cooldown_passed(
-    last_tick: Option<u32>,
+/// `None` while the deadline `anchor + anchor_early + delay` is still ahead;
+/// otherwise how many ticks before it the weapon was received. Receipt time
+/// stays authoritative: only a logically proven weapon may be early, by at
+/// most `PROVEN_COOLDOWN_ALLOWANCE_TICKS` including the anchor's own carried
+/// earliness, so the allowance never compounds across a stream of shots.
+fn cooldown_early_ticks(
+    anchor: Option<u32>,
+    anchor_early: u32,
     server_tick: u32,
     delay_ticks: u32,
     logical_cooldown_ready: bool,
-) -> bool {
-    delay_ticks == 0
-        || last_tick.is_none_or(|last_tick| {
-            let elapsed = crate::continuum::continuum_tick_diff(server_tick, last_tick);
-            let delay = delay_ticks.min(i32::MAX as u32) as i32;
-            elapsed >= delay || (logical_cooldown_ready && elapsed == delay - 1)
-        })
+) -> Option<u32> {
+    let Some(anchor) = anchor.filter(|_| delay_ticks > 0) else {
+        return Some(0);
+    };
+    let elapsed = i64::from(crate::continuum::continuum_tick_diff(server_tick, anchor));
+    let early = i64::from(delay_ticks) + i64::from(anchor_early) - elapsed;
+    if early <= 0 {
+        Some(0)
+    } else if logical_cooldown_ready && early <= i64::from(PROVEN_COOLDOWN_ALLOWANCE_TICKS) {
+        Some(early as u32)
+    } else {
+        None
+    }
 }
 
 impl WeaponInventory {

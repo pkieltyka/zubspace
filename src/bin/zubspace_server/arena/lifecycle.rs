@@ -153,6 +153,7 @@ pub(crate) fn register_connection_with_sender_in_state_at_tick(
             last_weapon_fire_tick: None,
             last_gun_fire_tick: None,
             last_bomb_fire_tick: None,
+            weapon_cooldown_schedule: Default::default(),
             objective_weapon_lock_until_tick: None,
             last_accepted_weapon_data: None,
             last_accepted_weapon_tick: None,

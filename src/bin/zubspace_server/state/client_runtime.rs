@@ -334,8 +334,30 @@ impl ClientHandle {
         // exact application marker commits or lifecycle/session reset clears
         // the runtime.
 
-        clear_elapsed_anchor(&mut self.last_gun_fire_tick, tick, gun_cooldown_ticks);
-        clear_elapsed_anchor(&mut self.last_bomb_fire_tick, tick, bomb_cooldown_ticks);
+        // A deadline includes its anchor's carried earliness, so keep each
+        // anchor until an unproven weapon would also be past it.
+        let schedule = &mut self.weapon_cooldown_schedule;
+        if clear_elapsed_anchor(
+            &mut self.last_gun_fire_tick,
+            tick,
+            gun_cooldown_ticks + schedule.gun_early_ticks,
+        ) {
+            schedule.gun_early_ticks = 0;
+        }
+        if clear_elapsed_anchor(
+            &mut self.last_bomb_fire_tick,
+            tick,
+            bomb_cooldown_ticks + schedule.bomb_early_ticks,
+        ) {
+            schedule.bomb_early_ticks = 0;
+        }
+        if clear_elapsed_anchor(
+            &mut schedule.repel_lock_tick,
+            tick,
+            crate::authority::REPEL_DELAY_TICKS + schedule.repel_early_ticks,
+        ) {
+            schedule.repel_early_ticks = 0;
+        }
         clear_elapsed_anchor(
             &mut self.last_weapon_fire_tick,
             tick,
@@ -759,6 +781,7 @@ impl ClientHandle {
         self.last_weapon_fire_tick = None;
         self.last_gun_fire_tick = None;
         self.last_bomb_fire_tick = None;
+        self.weapon_cooldown_schedule = Default::default();
         self.objective_weapon_lock_until_tick = None;
         self.last_accepted_weapon_data = None;
         self.last_accepted_weapon_tick = None;

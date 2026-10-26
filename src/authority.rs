@@ -18,7 +18,8 @@ pub(crate) use status::{
 };
 #[allow(unused_imports)]
 pub(crate) use weapons::{
-    WeaponCooldownProof, WeaponFireRequest, WeaponFireState, WeaponInventory,
+    PROVEN_COOLDOWN_ALLOWANCE_TICKS, REPEL_DELAY_TICKS, WeaponCooldownProof,
+    WeaponCooldownSchedule, WeaponFireRequest, WeaponFireState, WeaponInventory,
     WeaponInventoryTuning, accept_weapon_fire, accept_weapon_fire_with_levels,
     accept_weapon_fire_with_levels_and_charge,
     accept_weapon_fire_with_levels_and_charge_and_logical_cooldown,

@@ -36,16 +36,20 @@ fn only_accepted_non_mine_bombs_apply_post_movement_recoil() {
 }
 
 #[test]
-fn cross_class_gun_deadline_accepts_only_proven_final_quantization_tick() {
+fn cross_class_gun_deadline_accepts_only_proven_bounded_early_receipt() {
     // Reference gun fire sets next_bomb_tick = next_bullet_tick, including
     // multifire. Exercise the production preview/commit path, not a new rule.
+    let allowance = crate::authority::PROVEN_COOLDOWN_ALLOWANCE_TICKS;
     for ship in [0, 5] {
         for multi in [false, true] {
             for kind in [3, 4] {
                 for mine in [false, true] {
-                    for (wall_early, logical_early, allowed) in
-                        [(1, false, true), (2, false, false), (1, true, false)]
-                    {
+                    for (wall_early, logical_early, allowed) in [
+                        (1, false, true),
+                        (allowance, false, true),
+                        (allowance + 1, false, false),
+                        (1, true, false),
+                    ] {
                         let state = Arc::new(Mutex::new(ServerState::default()));
                         let (tx, _rx) = mpsc::channel();
                         let id = register_connection(&state, tx);
@@ -105,6 +109,68 @@ fn cross_class_gun_deadline_accepts_only_proven_final_quantization_tick() {
             }
         }
     }
+}
+
+// The client fires at its exact logical cooldowns; these are the shapes prod
+// refused as `cooldown` (Bacon420's Spider gun, kk's Repel after a bomb).
+#[test]
+fn client_cadence_weapons_refused_in_prod_are_accepted() {
+    let committed = |state: &mut ServerState, id, weapon, sequence, tick| {
+        let mut snapshot = crate::continuum_position::parse_client_position_snapshot(
+            &client_position_packet_with_weapon(0, 8200, 8200, weapon),
+        )
+        .unwrap();
+        snapshot.client_sequence = Some(sequence);
+        let (_, preview, committed) = crate::arena::preview_and_commit_position_weapon_for_test(
+            state, id, snapshot, tick, false,
+        )
+        .unwrap();
+        assert_eq!(preview, committed);
+        committed
+    };
+    let player = |ship| {
+        let state = Arc::new(Mutex::new(ServerState::default()));
+        let (tx, _rx) = mpsc::channel();
+        let id = register_connection(&state, tx);
+        join_arena(&state, id, ship);
+        let mut state = Arc::into_inner(state).unwrap().into_inner().unwrap();
+        let client = state.clients.get_mut(&id).unwrap();
+        client.server_energy = 1700;
+        client.server_max_energy = 1700;
+        client.server_weapons.gun_level = 3;
+        client.server_weapons.bomb_level = 2;
+        client.server_weapons.proximity_bombs = true;
+        client.server_weapons.repels = 2;
+        (state, id)
+    };
+
+    // A gun at its exact step cadence, received a few ticks closer than sent.
+    let (mut state, id) = player(2);
+    let gun = crate::gameplay_rules::encode_weapon_data(1, 3, false, 1, 0, false);
+    let delay = crate::arena_settings::arena_ship_weapon_fire_delay_ticks(2, 1);
+    let steps = (delay * 3).div_ceil(5) as u16;
+    assert_ne!(committed(&mut state, id, gun, 100, 1000), 0);
+    assert_ne!(
+        committed(&mut state, id, gun, 100 + steps, 1000 + delay - 3),
+        0
+    );
+
+    // A Repel 124 ticks after a proximity bomb: Repel waits only for its own
+    // 50-tick deadline, never the 150-tick bomb delay.
+    let (mut state, id) = player(0);
+    assert!(!crate::arena_settings::arena_ship_emp_bomb(0));
+    let bomb = crate::gameplay_rules::encode_weapon_data(4, 2, false, 1, 0, false);
+    let repel = crate::gameplay_rules::encode_weapon_data(5, 1, false, 1, 0, false);
+    assert_ne!(committed(&mut state, id, bomb, 200, 2000), 0);
+    assert_eq!(
+        committed(&mut state, id, repel, 220, 2033),
+        0,
+        "inside 50 ticks"
+    );
+    // A weaponless position releases the one-shot special latch.
+    assert_eq!(committed(&mut state, id, 0, 221, 2034), 0);
+    assert_ne!(committed(&mut state, id, repel, 274, 2124), 0);
+    assert_eq!(state.clients[&id].server_weapons.repels, 1);
 }
 
 #[test]
@@ -5895,6 +5961,10 @@ fn rewind_last_bomb_fire_tick(state: &Arc<Mutex<ServerState>>, player_id: u16, d
     let timestamp = server_tick_before_delay(delay_ticks);
     client.last_weapon_fire_tick = Some(timestamp);
     client.last_bomb_fire_tick = Some(timestamp);
+    // Repel keeps its own deadline beside the bomb one.
+    if client.weapon_cooldown_schedule.repel_lock_tick.is_some() {
+        client.weapon_cooldown_schedule.repel_lock_tick = Some(timestamp);
+    }
 }
 
 fn rewind_last_position_server_tick(
