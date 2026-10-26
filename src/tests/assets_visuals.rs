@@ -832,3 +832,13 @@ fn wave_format(data: &[u8]) -> Option<WaveFormat> {
         format
     })
 }
+
+#[test]
+fn score_leader_badge_uses_original_ten_frame_gold_shield() {
+    let decoded = decode_bm2(
+        include_bytes!("../../assets/graphics/ssshield.bm2"),
+        Transparency::Black,
+    )
+    .expect("gold Subspace shield should decode");
+    assert_eq!((decoded.width, decoded.height), (160, 16));
+}

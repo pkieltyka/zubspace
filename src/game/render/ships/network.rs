@@ -8,6 +8,7 @@ const MAX_PREDICTED_BOMB_DRAW_TRACE_ENTRIES: usize = 64;
 
 impl Game {
     pub(in crate::game::render) fn draw_network_players(&self, projectile_partial: f32) {
+        let leader_id = self.arena_score_leader_id();
         let viewer_frequency = self.viewer_frequency();
         let viewer_xradar = self.ship.xradar;
         // Sprite/projectile draw evidence is a trace-only diagnostic. It must
@@ -118,6 +119,12 @@ impl Game {
                         player.flags > 0,
                     ),
                 );
+                if leader_id == Some(player.player_id) {
+                    self.draw_camera_relative_leader_badge(
+                        pos + vec2(0.0, -34.0) - self.camera.target,
+                        &label,
+                    );
+                }
                 if crate::browser_metrics::debug_mode()
                     && let Some(energy) = player.display_energy()
                 {
@@ -150,6 +157,12 @@ impl Game {
                         child.flags > 0,
                     ),
                 );
+                if leader_id == Some(child.player_id) {
+                    self.draw_camera_relative_leader_badge(
+                        pos + vec2(0.0, -50.0 - index as f32 * 16.0) - self.camera.target,
+                        &label,
+                    );
+                }
             }
         }
         if trace_requested {

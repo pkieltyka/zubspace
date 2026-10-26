@@ -5,6 +5,44 @@ mod local;
 mod network;
 
 impl Game {
+    fn arena_score_leader_id(&self) -> Option<u16> {
+        crate::scoreboard::arena_score_leader(self.network_world.players.values().map(|player| {
+            (
+                player.player_id,
+                player.ship,
+                player.kill_points,
+                player.flag_points,
+            )
+        }))
+    }
+
+    fn draw_camera_relative_leader_badge(&self, offset: Vec2, label: &str) {
+        let scale = SHIP_LABEL_FONT_SIZE as f32 / self.assets.tall_font.line_height();
+        let anchor = camera_relative_ship_label_position(
+            &self.camera,
+            offset,
+            vec2(screen_width(), screen_height()),
+        );
+        // Keep the name's existing anchor and native bitmap font unchanged.
+        // The 16px badge sits immediately left of the complete name label.
+        let x = (anchor.x - self.assets.tall_font.measure_width_scaled(label, scale) * 0.5 - 20.0)
+            .floor();
+        let y = (anchor.y - 8.0).floor();
+        set_default_camera();
+        draw_texture_ex(
+            &self.assets.leader_badge.texture,
+            x,
+            y,
+            WHITE,
+            DrawTextureParams {
+                dest_size: Some(self.assets.leader_badge.frame_size),
+                source: Some(self.assets.leader_badge.source_at(get_time() as f32)),
+                ..Default::default()
+            },
+        );
+        set_camera(&self.camera);
+    }
+
     pub(in crate::game::render) fn draw_ship_label_text(
         &self,
         pos: Vec2,

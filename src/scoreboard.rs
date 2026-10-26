@@ -223,3 +223,58 @@ fn grouped_scoreboard_rows(
     }
     rows
 }
+
+/// Current playing roster only; score ties resolve to the lowest player ID.
+/// Death/respawn does not remove a player from contention, but spectating or
+/// leaving the arena does. Sum in u64 to preserve the full wire score range.
+pub(crate) fn arena_score_leader(
+    players: impl IntoIterator<Item = (u16, u8, u32, u32)>,
+) -> Option<u16> {
+    players
+        .into_iter()
+        .filter(|(_, ship, _, _)| *ship < 8)
+        .max_by(|a, b| {
+            (u64::from(a.2) + u64::from(a.3))
+                .cmp(&(u64::from(b.2) + u64::from(b.3)))
+                .then_with(|| b.0.cmp(&a.0))
+        })
+        .map(|player| player.0)
+}
+
+#[cfg(test)]
+mod leader_tests {
+    use super::arena_score_leader;
+
+    #[test]
+    fn leader_uses_current_playing_roster_scores_including_bots() {
+        let roster = [(1, 0, 100, 0), (768, 4, 90, 30), (2, 8, 9999, 9999)];
+        assert_eq!(arena_score_leader(roster), Some(768));
+        assert_eq!(
+            arena_score_leader([roster[0], roster[2]]),
+            Some(1),
+            "leaving promotes the next player"
+        );
+        assert_eq!(
+            arena_score_leader([(1, 0, 130, 0), roster[1]]),
+            Some(1),
+            "score updates transfer the badge"
+        );
+        assert_eq!(
+            arena_score_leader([(1, 8, 130, 0), roster[1]]),
+            Some(768),
+            "spectators cannot lead"
+        );
+        assert_eq!(arena_score_leader([]), None);
+        assert_eq!(arena_score_leader([roster[2]]), None);
+    }
+
+    #[test]
+    fn leader_ties_ignore_roster_order_and_handle_full_score_range() {
+        assert_eq!(arena_score_leader([(8, 0, 0, 0), (2, 7, 0, 0)]), Some(2));
+        assert_eq!(arena_score_leader([(2, 7, 0, 0), (8, 0, 0, 0)]), Some(2));
+        assert_eq!(
+            arena_score_leader([(2, 0, u32::MAX, 0), (8, 0, u32::MAX, 1)]),
+            Some(8)
+        );
+    }
+}

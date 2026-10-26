@@ -33,6 +33,7 @@ pub(crate) struct Assets {
     pub(crate) rocket: SpriteSheet,
     pub(crate) super_effect: SpriteSheet,
     pub(crate) shield_effect: SpriteSheet,
+    pub(crate) leader_badge: SpriteSheet,
     pub(crate) powerball: SpriteSheet,
     pub(crate) goal: SpriteSheet,
     pub(crate) flag: SpriteSheet,
