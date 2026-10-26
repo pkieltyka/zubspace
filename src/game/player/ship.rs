@@ -551,22 +551,64 @@ impl Game {
                     self.ship.energy,
                     self.effective_bomb_energy_cost(tuning).required,
                 )
-                && proximity_bomb_safe_to_fire(
-                    self.tuning.bomb_safety,
-                    self.ship.proximity_bombs,
-                    self.ship.pos,
-                    &self.bots,
-                    &self.network_world,
-                    self.player_frequency(),
-                    self.tuning,
-                    continuum_proximity_bomb_firing_safety_radius(
-                        self.tuning.proximity_distance,
-                        bomb_level,
-                    ),
-                )
+                && self.proximity_bomb_safe_for_step(bomb_level)
             {
                 self.fire_bomb(heading);
             }
+        }
+    }
+
+    /// BombSafety exactly as the server judges this step's bomb: the reported,
+    /// rounded ship position against the remote ships of the snapshot named by
+    /// the step's combat-view receipt. Offline play, or a step without that
+    /// recorded view, uses the latest positions.
+    fn proximity_bomb_safe_for_step(&self, bomb_level: u8) -> bool {
+        let radius = continuum_proximity_bomb_firing_safety_radius(
+            self.tuning.proximity_distance,
+            bomb_level,
+        );
+        let shooter = if self.networked_play {
+            vec2(
+                crate::continuum_position::protocol_position_coord(self.ship.pos.x) as f32,
+                crate::continuum_position::protocol_position_coord(self.ship.pos.y) as f32,
+            )
+        } else {
+            self.ship.pos
+        };
+        let view = self
+            .prepared_combat_view_receipt
+            .filter(|prepared| {
+                self.networked_play
+                    && prepared.authority_segment == self.client_authority.view().segment
+                    && prepared.receipt.input_sequence == self.next_input_seq
+                    && prepared.receipt.weapon_submission_ready()
+            })
+            .and_then(|prepared| {
+                self.combat_view_ship_positions
+                    .at(prepared.receipt.latest_game_applied_snapshot_id)
+            });
+        match view {
+            Some(view) => {
+                !self.tuning.bomb_safety
+                    || !self.ship.proximity_bombs
+                    || !proximity_bomb_safety_blocked_by_view(
+                        shooter,
+                        view,
+                        &self.network_world,
+                        self.player_frequency(),
+                        radius,
+                    )
+            }
+            None => proximity_bomb_safe_to_fire(
+                self.tuning.bomb_safety,
+                self.ship.proximity_bombs,
+                shooter,
+                &self.bots,
+                &self.network_world,
+                self.player_frequency(),
+                self.tuning,
+                radius,
+            ),
         }
     }
 
@@ -772,19 +814,7 @@ impl Game {
                 self.ship.energy,
                 self.effective_bomb_energy_cost(tuning).required,
             )
-            && proximity_bomb_safe_to_fire(
-                self.tuning.bomb_safety,
-                self.ship.proximity_bombs,
-                self.ship.pos,
-                &self.bots,
-                &self.network_world,
-                self.player_frequency(),
-                self.tuning,
-                continuum_proximity_bomb_firing_safety_radius(
-                    self.tuning.proximity_distance,
-                    bomb_level,
-                ),
-            )
+            && self.proximity_bomb_safe_for_step(bomb_level)
         {
             if in_safe {
                 self.apply_safe_zone_bomb_delay(tuning, tuning.bomb_cooldown);
@@ -856,19 +886,7 @@ impl Game {
                     self.ship.energy,
                     self.effective_bomb_energy_cost(tuning).required,
                 )
-                && proximity_bomb_safe_to_fire(
-                    self.tuning.bomb_safety,
-                    self.ship.proximity_bombs,
-                    self.ship.pos,
-                    &self.bots,
-                    &self.network_world,
-                    self.player_frequency(),
-                    self.tuning,
-                    continuum_proximity_bomb_firing_safety_radius(
-                        self.tuning.proximity_distance,
-                        bomb_level,
-                    ),
-                )
+                && self.proximity_bomb_safe_for_step(bomb_level)
             {
                 self.apply_safe_zone_bomb_delay(tuning, tuning.bomb_cooldown);
             }

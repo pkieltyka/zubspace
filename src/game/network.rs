@@ -1943,6 +1943,7 @@ impl Game {
                     "admitted planner hard boundary must advance the sole lifecycle owner"
                 );
                 self.observer_combat_timeline.reset();
+                self.combat_view_ship_positions.clear();
                 let replacement = replacement.unwrap_or_default();
                 let session_replaced = prior_scope.server_session_id
                     != replacement.server_session_id
@@ -2002,6 +2003,7 @@ impl Game {
                 ClientProtocolEvent::Disconnected => {
                     self.clear_bricks();
                     self.observer_combat_timeline.reset();
+                    self.combat_view_ship_positions.clear();
                     self.clear_remote_weapon_presentation();
                     self.clear_active_weapons();
                     self.explosions.clear();
@@ -3396,10 +3398,17 @@ impl Game {
                                 | ClientObserverTimelineDisposition::Pending
                                 | ClientObserverTimelineDisposition::Duplicate
                         ) {
-                            let _ = self.observer_combat_timeline.observe_game_applied_snapshot(
-                                frame.header.snapshot_id,
-                                frame.header.tick,
-                            );
+                            let applied =
+                                self.observer_combat_timeline.observe_game_applied_snapshot(
+                                    frame.header.snapshot_id,
+                                    frame.header.tick,
+                                );
+                            if applied
+                                == crate::combat_timeline::ClientAppliedSnapshotDisposition::Applied
+                            {
+                                self.combat_view_ship_positions
+                                    .record(frame.header.snapshot_id, &self.network_world);
+                            }
                         }
                     }
                 }

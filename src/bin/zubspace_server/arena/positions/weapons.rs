@@ -408,6 +408,32 @@ pub(super) fn proximity_bomb_blocked_by_bomb_safety(
         let dy = snapshot.y as f32 - target_y;
         dx * dx + dy * dy <= safety_radius * safety_radius
     };
+    // The shooter's client judged BombSafety against the ships its verified
+    // combat-view receipt had applied, presentation delay included, then
+    // predicted the bomb's recoil. Judge the same emitted frame here so the
+    // two cannot disagree at the safety boundary and force a snap-back.
+    // Without a decision or retained frame, use the latest positions.
+    let view = snapshot
+        .client_sequence
+        .and_then(|sequence| {
+            sender
+                .observer_combat_timeline
+                .decision_for_sequence(sequence)
+        })
+        .and_then(|decision| {
+            sender
+                .observer_presentation_history
+                .frames()
+                .rev()
+                .find(|frame| frame.snapshot_id == decision.applied_snapshot_id)
+        });
+    if let Some(frame) = view {
+        return frame.samples().any(|sample| {
+            let (target_x, target_y) = sample.position();
+            hostile_ship(state, sample.actor.player_id(), sender.player.frequency)
+                && blocks(target_x, target_y)
+        });
+    }
     state.clients.iter().any(|(&id, client)| {
         id != player_id
             && client.joined
@@ -422,6 +448,22 @@ pub(super) fn proximity_bomb_blocked_by_bomb_safety(
     }) || state.bots.iter().any(|bot| {
         bot.alive() && bot.player.frequency != sender.player.frequency && blocks(bot.x, bot.y)
     })
+}
+
+/// Whether a ship in the shooter's view is hostile now: a human in a ship or a
+/// bot on another frequency. A frame lists only ships alive when it was
+/// emitted, and the shooter's client keeps drawing a ship that died since, so
+/// current liveness is not consulted.
+fn hostile_ship(state: &ServerState, player_id: u16, frequency: u16) -> bool {
+    match state.clients.get(&player_id) {
+        Some(client) => {
+            client.joined && client.player.ship < 8 && client.player.frequency != frequency
+        }
+        None => state
+            .bots
+            .iter()
+            .any(|bot| bot.player.id == player_id && bot.player.frequency != frequency),
+    }
 }
 
 fn position_weapon_cooldown_delays(sender: &ClientHandle, weapon: u16) -> (u32, u32) {

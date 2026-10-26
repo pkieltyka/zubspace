@@ -215,6 +215,65 @@ fn proximity_bomb_safety_blocked_by_network_player(
     })
 }
 
+/// Remote ship positions as each Game-applied snapshot left them. A proximity
+/// bomb's BombSafety is judged against the snapshot named by the step's
+/// combat-view receipt, the same emitted frame the server judges, rather than
+/// whatever newer snapshot arrived before the step ran.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct CombatViewShipPositions {
+    snapshots: std::collections::VecDeque<(u16, Vec<(u16, Vec2)>)>,
+}
+
+impl CombatViewShipPositions {
+    /// The server retains this many emitted frames per observer.
+    const CAPACITY: usize = crate::combat_timeline::OBSERVER_PRESENTATION_HISTORY_SNAPSHOTS;
+
+    pub(crate) fn record(&mut self, snapshot_id: u16, network_world: &NetworkWorld) {
+        let viewer = network_world.viewer_player_id();
+        let ships = network_world
+            .players
+            .values()
+            .filter(|player| Some(player.player_id) != viewer)
+            .filter_map(|player| player.position.map(|position| (player.player_id, position)))
+            .collect();
+        self.snapshots.retain(|(id, _)| *id != snapshot_id);
+        self.snapshots.push_back((snapshot_id, ships));
+        while self.snapshots.len() > Self::CAPACITY {
+            self.snapshots.pop_front();
+        }
+    }
+
+    pub(crate) fn at(&self, snapshot_id: u16) -> Option<&[(u16, Vec2)]> {
+        self.snapshots
+            .iter()
+            .rev()
+            .find(|(id, _)| *id == snapshot_id)
+            .map(|(_, ships)| ships.as_slice())
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.snapshots.clear();
+    }
+}
+
+/// BombSafety against one recorded combat view: a recorded ship blocks when it
+/// is still a hostile ship and lies within the safety radius.
+pub(crate) fn proximity_bomb_safety_blocked_by_view(
+    shooter_pos: Vec2,
+    view: &[(u16, Vec2)],
+    network_world: &NetworkWorld,
+    local_frequency: u16,
+    safety_radius: f32,
+) -> bool {
+    view.iter().any(|&(player_id, position)| {
+        network_world
+            .players
+            .get(&player_id)
+            .is_some_and(|player| network_player_can_trigger_local_weapon(player, local_frequency))
+            && proximity_bomb_safety_blocks_ship(shooter_pos, position, safety_radius)
+    })
+}
+
 pub(crate) fn network_player_can_trigger_local_weapon(
     player: &NetworkPlayer,
     local_frequency: u16,

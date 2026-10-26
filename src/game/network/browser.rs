@@ -129,6 +129,7 @@ impl Game {
         self.client_authority = Default::default();
         self.observer_combat_timeline = Default::default();
         self.prepared_combat_view_receipt = None;
+        self.combat_view_ship_positions.clear();
         self.network_world = Default::default();
         self.network_settings_received = false;
         self.network_zone_files_ready = false;

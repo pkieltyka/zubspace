@@ -13376,6 +13376,83 @@ fn bomb_safety_does_not_exclude_a_proximity_mine_beside_an_enemy() {
     );
 }
 
+// Prod: a shooter's client drew an enemy outside BombSafety and fired a
+// proximity bomb with its recoil, while the enemy's latest server position was
+// inside the radius. The server refused the bomb and snapped the ship back.
+// Both sides now judge the frame the shooter's combat-view receipt applied.
+#[test]
+fn bomb_safety_judges_the_frame_the_shooters_receipt_applied() {
+    let radius = crate::continuum_weapon::continuum_proximity_bomb_firing_safety_radius(
+        crate::arena_settings::arena_proximity_distance(),
+        1,
+    );
+    let outside = 500 + radius as u16 + 2;
+    let inside = 500 + radius as u16 - 2;
+    // (enemy x in the shooter's frame, enemy's latest x, bomb fires)
+    for (seen_x, latest_x, fires) in [(outside, inside, true), (inside, outside, false)] {
+        let state = Arc::new(Mutex::new(ServerState::default()));
+        let (tx_a, _rx_a) = mpsc::channel();
+        let (tx_b, _rx_b) = mpsc::channel();
+        let alpha = register_connection(&state, tx_a);
+        let beta = register_connection(&state, tx_b);
+        join_arena(&state, alpha, 0);
+        join_arena(&state, beta, 0);
+        broadcast_position_observable(
+            &state,
+            beta,
+            &client_position_packet(0x1122_3344, latest_x, 700),
+        );
+        {
+            let mut locked = state.lock().unwrap();
+            let alpha_runtime = locked.active_player_runtime_identity(alpha).unwrap();
+            let beta_runtime = locked.active_actor_runtime_identity(beta).unwrap();
+            let sender = locked.clients.get_mut(&alpha).unwrap();
+            sender.server_weapons.proximity_bombs = true;
+            sender.server_weapons.bomb_level = 1;
+            let arena_stream_id = sender.arena_stream_id;
+            sender
+                .observer_presentation_history
+                .begin_scope(alpha_runtime, arena_stream_id);
+            // The fixture's seeded input decisions name applied snapshot 1.
+            let appended = sender.observer_presentation_history.observe_emitted(
+                crate::combat_timeline::ObserverPresentationFrameV1 {
+                    observer: alpha_runtime,
+                    arena_stream_id,
+                    snapshot_id: 1,
+                    server_tick: 1,
+                    actors: vec![crate::combat_timeline::ObserverPresentationSampleV1 {
+                        sample_time: Default::default(),
+                        actor: beta_runtime,
+                        motion_segment: crate::combat_timeline::MotionSegmentIdentity {
+                            actor: beta_runtime,
+                            arena_stream_id,
+                            discontinuity_generation: 0,
+                        },
+                        x_q8: i32::from(seen_x) * 256,
+                        y_q8: 700 * 256,
+                        velocity_x_q8: 0,
+                        velocity_y_q8: 0,
+                        orientation_u16: 0,
+                        snap_discontinuity: false,
+                    }],
+                },
+            );
+            assert_eq!(
+                appended,
+                crate::combat_timeline::ObserverPresentationAppendDisposition::Applied
+            );
+        }
+        let mut packet = client_position_packet(0x1122_3344, 500, 700);
+        packet[20..22].copy_from_slice(&4_u16.to_le_bytes());
+        broadcast_position_observable(&state, alpha, &packet);
+        assert_eq!(
+            !state.lock().unwrap().active_projectiles.is_empty(),
+            fires,
+            "enemy seen at x={seen_x}, latest x={latest_x}, radius {radius}"
+        );
+    }
+}
+
 #[test]
 fn accelerated_input_clock_cannot_commit_legal_future_movement() {
     for elapsed in [0, 100] {

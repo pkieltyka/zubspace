@@ -388,6 +388,16 @@ The server wrapper (`arena/positions/weapons.rs`) adds mine limits,
 proximity-bomb safety, flag-carrier upgrades and the post-Warp lock. A shot
 without a valid combat-view receipt is blocked.
 
+Proximity-bomb safety (BombSafety) refuses a fired, not dropped, proximity
+bomb when a hostile ship lies within `(ProximityDistance + level - 1) * 16`
+pixels. The server judges it against the frame the shooter's combat-view
+receipt names, the remote ship positions that browser had applied, measured
+from the shooter's reported, rounded position. The browser keeps the remote
+positions of each applied snapshot and judges the same frame and rounded
+position before predicting the bomb and its recoil, so the two agree at the
+boundary instead of differing by the presentation delay. Without a decision
+or retained frame, the server falls back to the latest positions.
+
 ### 6.3 Specials
 
 **Decoys** are server entities (`ServerDecoy`). Each copies its owner's

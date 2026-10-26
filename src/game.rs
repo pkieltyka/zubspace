@@ -730,6 +730,9 @@ pub(crate) struct Game {
     /// codec ACK state remains owned by the protocol session.
     observer_combat_timeline: crate::combat_timeline::ClientObserverCombatTimeline,
     prepared_combat_view_receipt: Option<PreparedCombatViewReceipt>,
+    /// Remote ships per Game-applied snapshot, for BombSafety against the
+    /// snapshot a step's receipt names. Reset with the observer timeline.
+    combat_view_ship_positions: crate::gameplay::CombatViewShipPositions,
     /// Exact most recently observed server tick retained while
     /// `update_browser_network` temporarily moves the browser owner out of
     /// `Game` to poll packets. Authority consumers must not see a false
