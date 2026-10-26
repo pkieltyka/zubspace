@@ -28,6 +28,15 @@ impl Game {
             &label,
             ship_label_team_color(),
         );
+        if self
+            .client_authority
+            .view()
+            .scope
+            .player_id
+            .is_some_and(|id| self.arena_score_leader_id() == Some(id))
+        {
+            self.draw_camera_relative_leader_badge(vec2(0.0, -34.0), &label);
+        }
         if let Some((energy, color)) = energy_label(self.visible_hud_energy(), self.ship.max_energy)
         {
             self.draw_camera_relative_ship_label(vec2(0.0, -48.0), &energy, color);

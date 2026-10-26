@@ -173,6 +173,18 @@ status panel and shading of hidden solid tiles (see
 [Chaos hidden solid tiles](#chaos-hidden-solid-tiles)). Without it, F9 does
 nothing.
 
+## Arena score leader
+
+The currently playing pilot with the highest total score (kill points plus flag
+points) has the original gold rotating Subspace shield to the left of their ship
+name. Server bots participate too, and the leader sees it on their own ship.
+Spectators are excluded; tied scores go to the lowest player ID. Death and
+respawn retain eligibility, while leaving or switching to spectator promotes
+the next eligible player. Selection uses the full authoritative arena roster,
+including players outside the camera's area of interest. The badge follows
+normal name visibility, so it does not reveal a hidden cloaked opponent.
+The ten 16×16 frames in `ssshield.bm2` repeat once per second.
+
 ## Weapons and items
 
 | Weapon | Notes |

@@ -653,6 +653,8 @@ pub(crate) struct ClientHandle {
     pub(crate) last_weapon_fire_tick: Option<u32>,
     pub(crate) last_gun_fire_tick: Option<u32>,
     pub(crate) last_bomb_fire_tick: Option<u32>,
+    /// Carried receipt-time earliness and the separate Repel deadline.
+    pub(crate) weapon_cooldown_schedule: crate::authority::WeaponCooldownSchedule,
     pub(crate) objective_weapon_lock_until_tick: Option<u32>,
     pub(crate) last_accepted_weapon_data: Option<u16>,
     pub(crate) last_accepted_weapon_tick: Option<u32>,

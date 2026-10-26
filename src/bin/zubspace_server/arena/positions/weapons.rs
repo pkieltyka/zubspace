@@ -4,8 +4,9 @@ use crate::arena_settings::{
     arena_ship_weapon_energy_cost, arena_ship_weapon_fire_delay_ticks, arena_team_max_mines,
 };
 use crate::authority::{
-    EnergyPool, WeaponCooldownProof, WeaponFireOutcome, WeaponFireRejectReason, WeaponFireRequest,
-    WeaponFireState, accept_weapon_fire_with_levels_and_charge_and_logical_cooldown,
+    EnergyPool, REPEL_DELAY_TICKS, WeaponCooldownProof, WeaponFireOutcome, WeaponFireRejectReason,
+    WeaponFireRequest, WeaponFireState,
+    accept_weapon_fire_with_levels_and_charge_and_logical_cooldown,
 };
 use crate::continuum_position::{ClientPositionSnapshot, large_position_world_coordinates};
 use crate::continuum_weapon::{
@@ -182,9 +183,9 @@ fn accepted_position_weapon_with_logging(
             .then_some("objective_lock"))
         .or(warp_bomb_lock_active.then_some("warp_bomb_lock"));
     let energy_before_fire = sender.server_energy;
-    // A gun sets both reference deadlines to the same tick. The final
-    // 100 Hz quantization allowance therefore belongs to the preceding gun,
-    // even when the new request is a bomb/mine. Prove each owning class
+    // A gun sets both reference deadlines to the same tick. The proven
+    // receipt-time allowance therefore belongs to the preceding gun, even
+    // when the new request is a bomb/mine. Prove each owning class
     // independently; an older bomb deadline cannot borrow a newer gun proof.
     let mut logical_cooldown = WeaponCooldownProof::default();
     if let Some(sequence) = snapshot.client_sequence
@@ -223,6 +224,16 @@ fn accepted_position_weapon_with_logging(
                 );
             }
         }
+        // Repel's own deadline belongs to whichever weapon last set it.
+        if accepted_weapon_type == 5
+            && sender.weapon_cooldown_schedule.repel_lock_tick == Some(previous_tick)
+        {
+            logical_cooldown.repel = crate::gameplay_rules::weapon_sequence_cooldown_elapsed(
+                previous_sequence,
+                sequence,
+                REPEL_DELAY_TICKS,
+            );
+        }
     }
     let outcome = accept_weapon_fire_with_levels_and_charge_and_logical_cooldown(
         WeaponFireState {
@@ -236,6 +247,7 @@ fn accepted_position_weapon_with_logging(
             last_gun_fire_tick: sender.last_gun_fire_tick,
             last_bomb_fire_tick: sender.last_bomb_fire_tick,
             last_special_weapon_request: sender.last_special_weapon_request,
+            schedule: sender.weapon_cooldown_schedule,
         },
         WeaponFireRequest {
             weapon_data: snapshot.weapon,
@@ -245,6 +257,7 @@ fn accepted_position_weapon_with_logging(
             energy_cost: energy_cost.required,
             fire_delay_ticks,
             cross_fire_delay_ticks,
+            emp_bomb: crate::arena_settings::arena_ship_emp_bomb(sender.player.ship),
         },
         effective_gun_level,
         effective_bomb_level,
@@ -258,6 +271,7 @@ fn accepted_position_weapon_with_logging(
     sender.last_gun_fire_tick = outcome.state.last_gun_fire_tick;
     sender.last_bomb_fire_tick = outcome.state.last_bomb_fire_tick;
     sender.last_special_weapon_request = outcome.state.last_special_weapon_request;
+    sender.weapon_cooldown_schedule = outcome.state.schedule;
     if outcome.accepted_weapon_data != 0 {
         sender.last_accepted_weapon_data = Some(outcome.accepted_weapon_data);
         sender.last_accepted_weapon_tick = Some(server_fire_tick);
@@ -408,6 +422,32 @@ pub(super) fn proximity_bomb_blocked_by_bomb_safety(
         let dy = snapshot.y as f32 - target_y;
         dx * dx + dy * dy <= safety_radius * safety_radius
     };
+    // The shooter's client judged BombSafety against the ships its verified
+    // combat-view receipt had applied, presentation delay included, then
+    // predicted the bomb's recoil. Judge the same emitted frame here so the
+    // two cannot disagree at the safety boundary and force a snap-back.
+    // Without a decision or retained frame, use the latest positions.
+    let view = snapshot
+        .client_sequence
+        .and_then(|sequence| {
+            sender
+                .observer_combat_timeline
+                .decision_for_sequence(sequence)
+        })
+        .and_then(|decision| {
+            sender
+                .observer_presentation_history
+                .frames()
+                .rev()
+                .find(|frame| frame.snapshot_id == decision.applied_snapshot_id)
+        });
+    if let Some(frame) = view {
+        return frame.samples().any(|sample| {
+            let (target_x, target_y) = sample.position();
+            hostile_ship(state, sample.actor.player_id(), sender.player.frequency)
+                && blocks(target_x, target_y)
+        });
+    }
     state.clients.iter().any(|(&id, client)| {
         id != player_id
             && client.joined
@@ -424,6 +464,22 @@ pub(super) fn proximity_bomb_blocked_by_bomb_safety(
     })
 }
 
+/// Whether a ship in the shooter's view is hostile now: a human in a ship or a
+/// bot on another frequency. A frame lists only ships alive when it was
+/// emitted, and the shooter's client keeps drawing a ship that died since, so
+/// current liveness is not consulted.
+fn hostile_ship(state: &ServerState, player_id: u16, frequency: u16) -> bool {
+    match state.clients.get(&player_id) {
+        Some(client) => {
+            client.joined && client.player.ship < 8 && client.player.frequency != frequency
+        }
+        None => state
+            .bots
+            .iter()
+            .any(|bot| bot.player.id == player_id && bot.player.frequency != frequency),
+    }
+}
+
 fn position_weapon_cooldown_delays(sender: &ClientHandle, weapon: u16) -> (u32, u32) {
     // Each committed shot has already served its preceding cross-class lock.
     // Its canonical wire metadata owns the new lock, including multifire.
@@ -431,6 +487,10 @@ fn position_weapon_cooldown_delays(sender: &ClientHandle, weapon: u16) -> (u32, 
     // while EMP deliberately permits intervening gun fire.
     let ship = sender.player.ship;
     let kind = continuum_weapon_type(weapon);
+    if kind == 5 {
+        // Repel is gated only by its own deadline (`REPEL_DELAY_TICKS`).
+        return (REPEL_DELAY_TICKS, 0);
+    }
     let default = (
         arena_ship_weapon_fire_delay_ticks(ship, kind),
         arena_ship_weapon_cross_fire_delay_ticks(ship, kind),

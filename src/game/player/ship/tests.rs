@@ -841,6 +841,100 @@ fn bomb_safety_semantic_fire_uses_tile_radius_not_the_contact_sensor() {
     }
 }
 
+// The server judges BombSafety at the reported, rounded ship position against
+// the frame named by the step's combat-view receipt. A newer snapshot applied
+// before the step, or the unrounded position, must not change the client's
+// decision, or the server refuses the bomb whose recoil was predicted.
+#[test]
+fn networked_bomb_safety_judges_the_receipt_snapshot_at_the_reported_position() {
+    let mut game = render_prediction_test_game();
+    game.networked_play = true;
+    game.tuning.bomb_safety = true;
+    game.tuning.proximity_distance = 3.0;
+    game.ship.proximity_bombs = true;
+    let radius = continuum_proximity_bomb_firing_safety_radius(3.0, 1);
+    assert_eq!(radius, 48.0);
+    let frequency = game.player_frequency();
+    let mut enemy =
+        crate::network::NetworkPlayer::from_roster(&crate::protocol::PlayerRosterEntry {
+            ship: 0,
+            audio: 0,
+            name: "safety-target".into(),
+            squad: String::new(),
+            kill_points: 0,
+            flag_points: 0,
+            player_id: 9,
+            frequency: frequency.wrapping_add(1),
+            wins: 0,
+            losses: 0,
+            attach_parent: INVALID_PLAYER_ID,
+            flags: 0,
+            koth: 0,
+        });
+    let receipt_for = |game: &Game, snapshot_id| PreparedCombatViewReceipt {
+        authority_segment: game.client_authority.view().segment,
+        receipt: crate::combat_timeline::CombatViewReceiptV1 {
+            observer_life_seq: 1,
+            input_sequence: game.next_input_seq,
+            timeline_generation: 1,
+            latest_game_applied_snapshot_id: snapshot_id,
+            flags: 0,
+        },
+    };
+
+    // Snapshot 7 drew the enemy just outside the radius; snapshot 8, applied
+    // before the step ran, moved it inside.
+    game.ship.pos = vec2(500.0, 700.0);
+    enemy.position = Some(vec2(550.0, 700.0));
+    game.network_world.players.insert(9, enemy.clone());
+    game.combat_view_ship_positions
+        .record(7, &game.network_world);
+    enemy.position = Some(vec2(546.0, 700.0));
+    game.network_world.players.insert(9, enemy.clone());
+    game.combat_view_ship_positions
+        .record(8, &game.network_world);
+    assert!(
+        !proximity_bomb_safe_to_fire(
+            true,
+            true,
+            game.ship.pos,
+            &game.bots,
+            &game.network_world,
+            frequency,
+            game.tuning,
+            radius,
+        ),
+        "the latest positions alone would refuse the bomb"
+    );
+    game.prepared_combat_view_receipt = Some(receipt_for(&game, 7));
+    assert!(game.proximity_bomb_safe_for_step(1), "receipt snapshot 7");
+    game.prepared_combat_view_receipt = Some(receipt_for(&game, 8));
+    assert!(!game.proximity_bomb_safe_for_step(1), "receipt snapshot 8");
+
+    // The server sees the rounded position: 499.6 reports as 500, exactly
+    // the radius from an enemy at 548, which BombSafety blocks.
+    game.ship.pos = vec2(499.6, 700.0);
+    enemy.position = Some(vec2(548.0, 700.0));
+    game.network_world.players.insert(9, enemy);
+    game.combat_view_ship_positions
+        .record(9, &game.network_world);
+    game.prepared_combat_view_receipt = Some(receipt_for(&game, 9));
+    assert!(
+        proximity_bomb_safe_to_fire(
+            true,
+            true,
+            game.ship.pos,
+            &game.bots,
+            &game.network_world,
+            frequency,
+            game.tuning,
+            radius,
+        ),
+        "the unrounded position is 48.4 px away and would fire"
+    );
+    assert!(!game.proximity_bomb_safe_for_step(1));
+}
+
 #[test]
 fn held_repel_wall_expiry_is_wrap_safe_and_never_rearms_a_retired_window() {
     let mut game = Game::new_network_authority_test();

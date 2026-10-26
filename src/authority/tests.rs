@@ -434,6 +434,7 @@ fn weapon_fire_acceptance_spends_energy_and_consumables() {
         last_gun_fire_tick: None,
         last_bomb_fire_tick: None,
         last_special_weapon_request: None,
+        schedule: Default::default(),
     };
 
     let outcome = accept_weapon_fire(
@@ -446,6 +447,7 @@ fn weapon_fire_acceptance_spends_energy_and_consumables() {
             energy_cost: 20.0,
             fire_delay_ticks: 50,
             cross_fire_delay_ticks: 0,
+            emp_bomb: false,
         },
     );
 
@@ -469,6 +471,7 @@ fn weapon_fire_acceptance_rejects_arena_rule_blocked_weapon() {
             last_gun_fire_tick: None,
             last_bomb_fire_tick: None,
             last_special_weapon_request: None,
+            schedule: Default::default(),
         },
         WeaponFireRequest {
             weapon_data: 3,
@@ -478,6 +481,7 @@ fn weapon_fire_acceptance_rejects_arena_rule_blocked_weapon() {
             energy_cost: 20.0,
             fire_delay_ticks: 50,
             cross_fire_delay_ticks: 0,
+            emp_bomb: false,
         },
     );
 
@@ -495,6 +499,7 @@ fn weapon_fire_acceptance_does_not_grant_unowned_client_requested_capabilities()
         last_gun_fire_tick: None,
         last_bomb_fire_tick: None,
         last_special_weapon_request: None,
+        schedule: Default::default(),
     };
 
     let forged_proximity = accept_weapon_fire(
@@ -507,6 +512,7 @@ fn weapon_fire_acceptance_does_not_grant_unowned_client_requested_capabilities()
             energy_cost: 20.0,
             fire_delay_ticks: 0,
             cross_fire_delay_ticks: 0,
+            emp_bomb: false,
         },
     );
     assert_eq!(forged_proximity.accepted_weapon_data, 0);
@@ -522,6 +528,7 @@ fn weapon_fire_acceptance_does_not_grant_unowned_client_requested_capabilities()
             energy_cost: 0.0,
             fire_delay_ticks: 0,
             cross_fire_delay_ticks: 0,
+            emp_bomb: false,
         },
     );
     assert_eq!(forged_repel.accepted_weapon_data, 0);
@@ -537,6 +544,7 @@ fn weapon_fire_acceptance_does_not_grant_unowned_client_requested_capabilities()
             energy_cost: 20.0,
             fire_delay_ticks: 0,
             cross_fire_delay_ticks: 0,
+            emp_bomb: false,
         },
     );
     assert_eq!(forged_gun_upgrade.accepted_weapon_data, 0);
@@ -555,6 +563,7 @@ fn weapon_fire_acceptance_allows_only_the_server_supplied_flagger_level() {
         last_gun_fire_tick: None,
         last_bomb_fire_tick: None,
         last_special_weapon_request: None,
+        schedule: Default::default(),
     };
     let level_four_bullet = 2 | (3 << 5);
     let request = WeaponFireRequest {
@@ -565,6 +574,7 @@ fn weapon_fire_acceptance_allows_only_the_server_supplied_flagger_level() {
         energy_cost: 80.0,
         fire_delay_ticks: 0,
         cross_fire_delay_ticks: 0,
+        emp_bomb: false,
     };
 
     assert_eq!(accept_weapon_fire(state, request).accepted_weapon_data, 0);
@@ -586,6 +596,7 @@ fn weapon_fire_acceptance_rejects_held_special_until_released() {
             last_gun_fire_tick: None,
             last_bomb_fire_tick: None,
             last_special_weapon_request: None,
+            schedule: Default::default(),
         },
         WeaponFireRequest {
             weapon_data: 5,
@@ -595,6 +606,7 @@ fn weapon_fire_acceptance_rejects_held_special_until_released() {
             energy_cost: 0.0,
             fire_delay_ticks: 0,
             cross_fire_delay_ticks: 0,
+            emp_bomb: false,
         },
     );
 
@@ -608,6 +620,7 @@ fn weapon_fire_acceptance_rejects_held_special_until_released() {
             energy_cost: 0.0,
             fire_delay_ticks: 0,
             cross_fire_delay_ticks: 0,
+            emp_bomb: false,
         },
     );
     assert_eq!(held.accepted_weapon_data, 0);
@@ -623,6 +636,7 @@ fn weapon_fire_acceptance_rejects_held_special_until_released() {
             energy_cost: 0.0,
             fire_delay_ticks: 0,
             cross_fire_delay_ticks: 0,
+            emp_bomb: false,
         },
     );
     assert_eq!(released.state.last_special_weapon_request, None);
@@ -637,6 +651,7 @@ fn weapon_fire_acceptance_rejects_held_special_until_released() {
             energy_cost: 0.0,
             fire_delay_ticks: 0,
             cross_fire_delay_ticks: 0,
+            emp_bomb: false,
         },
     );
     assert_eq!(pressed_again.accepted_weapon_data, 5);
@@ -653,6 +668,7 @@ fn weapon_fire_acceptance_uses_gun_delay_not_bomb_delay_after_gun_for_bombs() {
         last_gun_fire_tick: Some(100),
         last_bomb_fire_tick: None,
         last_special_weapon_request: None,
+        schedule: Default::default(),
     };
 
     let accepted = accept_weapon_fire(
@@ -665,6 +681,7 @@ fn weapon_fire_acceptance_uses_gun_delay_not_bomb_delay_after_gun_for_bombs() {
             energy_cost: 0.0,
             fire_delay_ticks: 150,
             cross_fire_delay_ticks: 24,
+            emp_bomb: false,
         },
     );
 
@@ -682,6 +699,7 @@ fn weapon_fire_acceptance_keeps_bomb_delay_lockout_for_guns_after_bomb() {
         last_gun_fire_tick: None,
         last_bomb_fire_tick: Some(100),
         last_special_weapon_request: None,
+        schedule: Default::default(),
     };
 
     let rejected = accept_weapon_fire(
@@ -694,6 +712,7 @@ fn weapon_fire_acceptance_keeps_bomb_delay_lockout_for_guns_after_bomb() {
             energy_cost: 0.0,
             fire_delay_ticks: 24,
             cross_fire_delay_ticks: 150,
+            emp_bomb: false,
         },
     );
     assert_eq!(rejected.accepted_weapon_data, 0);
@@ -708,74 +727,152 @@ fn weapon_fire_acceptance_keeps_bomb_delay_lockout_for_guns_after_bomb() {
             energy_cost: 0.0,
             fire_delay_ticks: 24,
             cross_fire_delay_ticks: 150,
+            emp_bomb: false,
         },
     );
     assert_eq!(accepted.accepted_weapon_data, 2);
     assert_eq!(accepted.state.last_gun_fire_tick, Some(250));
 }
 
+fn fire_with_proof(
+    state: WeaponFireState,
+    request: WeaponFireRequest,
+    proof: super::weapons::WeaponCooldownProof,
+) -> WeaponFireOutcome {
+    super::weapons::accept_weapon_fire_with_levels_and_charge_and_logical_cooldown(
+        state,
+        request,
+        state.weapons.gun_level,
+        state.weapons.bomb_level,
+        request.energy_cost,
+        proof,
+    )
+}
+
+// Prod: a Spider's 50-tick gun fired at its exact 30-step logical cadence was
+// refused when its packets arrived a few ticks closer together than they were
+// sent (network jitter, deferred admission, the 60 Hz server loop).
 #[test]
-fn weapon_fire_acceptance_allows_only_one_server_tick_of_proven_sequence_quantization() {
-    let weapons = inventory_with_bouncing_prize();
+fn proven_weapons_may_arrive_early_by_a_bounded_amount_that_never_compounds() {
+    let allowance = super::weapons::PROVEN_COOLDOWN_ALLOWANCE_TICKS;
+    let proven = super::weapons::WeaponCooldownProof {
+        gun: true,
+        ..Default::default()
+    };
     let state = WeaponFireState {
         energy: EnergyPool::new(100, 200, 0.0),
-        weapons,
+        weapons: inventory_with_bouncing_prize(),
         last_fire_tick: Some(100),
         last_gun_fire_tick: Some(100),
         last_bomb_fire_tick: None,
         last_special_weapon_request: None,
+        schedule: Default::default(),
     };
-    let request = WeaponFireRequest {
+    let gun = |server_tick| WeaponFireRequest {
         weapon_data: 2,
-        server_tick: 123,
+        server_tick,
         in_safe_tile: false,
         blocked_by_arena_rule: false,
         energy_cost: 0.0,
-        fire_delay_ticks: 24,
+        fire_delay_ticks: 50,
         cross_fire_delay_ticks: 0,
+        emp_bomb: false,
     };
 
     assert_eq!(
-        accept_weapon_fire(state, request).reject_reason,
-        Some(super::weapons::WeaponFireRejectReason::Cooldown),
+        accept_weapon_fire(state, gun(149)).reject_reason,
+        Some(WeaponFireRejectReason::Cooldown),
         "receipt time remains authoritative without a canonical logical proof"
     );
     assert_eq!(
-        super::weapons::accept_weapon_fire_with_levels_and_charge_and_logical_cooldown(
-            state,
-            request,
-            1,
-            1,
-            0.0,
-            super::weapons::WeaponCooldownProof {
-                gun: true,
-                bomb: false
-            },
-        )
-        .accepted_weapon_data,
-        2,
-        "one final 100 Hz quantization tick is accepted with exact logical proof"
+        fire_with_proof(state, gun(150 - allowance - 1), proven).reject_reason,
+        Some(WeaponFireRejectReason::Cooldown),
+        "logical input never becomes an unbounded time authority"
     );
+    let early = fire_with_proof(state, gun(150 - allowance), proven);
+    assert_eq!(early.accepted_weapon_data, 2);
+    assert_eq!(early.state.schedule.gun_early_ticks, allowance);
 
-    let two_ticks_early = WeaponFireRequest {
-        server_tick: 122,
-        ..request
+    // A sustained stream received as early as possible stays on the authored
+    // schedule: each shot may lead its nominal deadline by the allowance, but
+    // the lead never accumulates.
+    let mut current = early.state;
+    let mut nominal = 150;
+    for _ in 0..20 {
+        nominal += 50;
+        assert_eq!(
+            fire_with_proof(current, gun(nominal - allowance - 1), proven).reject_reason,
+            Some(WeaponFireRejectReason::Cooldown)
+        );
+        let next = fire_with_proof(current, gun(nominal - allowance), proven);
+        assert_eq!(next.accepted_weapon_data, 2);
+        current = next.state;
+    }
+    assert_eq!(current.last_gun_fire_tick, Some(nominal - allowance));
+
+    // An on-time shot repays the carried lead.
+    let on_time = fire_with_proof(current, gun(nominal + 50), proven);
+    assert_eq!(on_time.state.schedule.gun_early_ticks, 0);
+}
+
+#[test]
+fn repel_waits_only_for_the_reference_repel_deadline() {
+    let mut weapons = inventory_with_bouncing_prize();
+    weapons.repels = 2;
+    let state = WeaponFireState {
+        energy: EnergyPool::new(200, 200, 0.0),
+        weapons,
+        last_fire_tick: None,
+        last_gun_fire_tick: None,
+        last_bomb_fire_tick: None,
+        last_special_weapon_request: None,
+        schedule: Default::default(),
     };
+    let request = |weapon_data, server_tick, emp_bomb| WeaponFireRequest {
+        weapon_data,
+        server_tick,
+        in_safe_tile: false,
+        blocked_by_arena_rule: false,
+        energy_cost: 0.0,
+        fire_delay_ticks: match weapon_data {
+            2 => 24,
+            5 => super::weapons::REPEL_DELAY_TICKS,
+            _ => 150,
+        },
+        cross_fire_delay_ticks: 0,
+        emp_bomb,
+    };
+    let repel = |state: WeaponFireState, server_tick| {
+        accept_weapon_fire(state, request(5, server_tick, false)).accepted_weapon_data
+    };
+
+    // A bomb keeps the next bomb waiting 150 ticks but Repel only 50, as in
+    // prod where a Repel 125 ticks after a proximity bomb was refused.
+    let bomb = accept_weapon_fire(state, request(3, 100, false)).state;
+    assert_eq!(bomb.schedule.repel_lock_tick, Some(100));
+    assert_eq!(repel(bomb, 149), 0);
+    assert_eq!(repel(bomb, 150), 5);
+    assert_eq!(repel(bomb, 225), 5);
+
+    // EmpBomb bombs, and guns, never delay Repel.
+    let emp_bomb = accept_weapon_fire(state, request(3, 100, true)).state;
+    assert_eq!(emp_bomb.schedule.repel_lock_tick, None);
+    assert_eq!(repel(emp_bomb, 101), 5);
+    let gun = accept_weapon_fire(state, request(2, 100, false)).state;
+    assert_eq!(repel(gun, 101), 5);
+
+    // Repel delays itself by 50 ticks and sets the bomb (and so gun)
+    // deadline like any bomb-class weapon.
+    let first = accept_weapon_fire(state, request(5, 100, false)).state;
+    let mut released = first;
+    // A position without a weapon releases the one-shot special latch.
+    released.last_special_weapon_request = None;
+    assert_eq!(repel(released, 149), 0);
+    assert_eq!(repel(released, 150), 5);
+    assert_eq!(first.last_bomb_fire_tick, Some(100));
     assert_eq!(
-        super::weapons::accept_weapon_fire_with_levels_and_charge_and_logical_cooldown(
-            state,
-            two_ticks_early,
-            1,
-            1,
-            0.0,
-            super::weapons::WeaponCooldownProof {
-                gun: true,
-                bomb: false
-            },
-        )
-        .reject_reason,
-        Some(super::weapons::WeaponFireRejectReason::Cooldown),
-        "logical input never becomes an independent or multi-tick time authority"
+        accept_weapon_fire(first, request(3, 249, false)).reject_reason,
+        Some(WeaponFireRejectReason::Cooldown)
     );
 }
 
@@ -789,6 +886,7 @@ fn super_shots_require_normal_fractional_energy_but_charge_zero() {
             last_gun_fire_tick: None,
             last_bomb_fire_tick: None,
             last_special_weapon_request: None,
+            schedule: Default::default(),
         }
     }
     let request = WeaponFireRequest {
@@ -799,6 +897,7 @@ fn super_shots_require_normal_fractional_energy_but_charge_zero() {
         energy_cost: 100.0,
         fire_delay_ticks: 0,
         cross_fire_delay_ticks: 0,
+        emp_bomb: false,
     };
 
     for (current, remainder) in [(99, 0.999), (100, 0.0)] {

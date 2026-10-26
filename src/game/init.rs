@@ -382,6 +382,7 @@ impl Game {
             observer_combat_timeline: crate::combat_timeline::ClientObserverCombatTimeline::default(
             ),
             prepared_combat_view_receipt: None,
+            combat_view_ship_positions: Default::default(),
             last_observed_browser_server_tick: None,
             projectile_refresh_needed: false,
             weapon_recovery_steps_remaining: 4096,

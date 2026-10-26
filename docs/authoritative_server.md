@@ -384,9 +384,30 @@ The core check (`src/authority/weapons.rs`) rejects shots that are:
 - unaffordable in energy;
 - still on cooldown.
 
+Cooldowns follow the reference game's deadlines. A gun or bomb waits for the
+delay set by the previous accepted weapon, including the cross-class delay
+between guns and bombs. Repel waits only for its own 50-tick deadline, set by
+a Repel, Burst, Thor, Decoy or a non-EmpBomb bomb or mine; guns never delay
+it. Deadlines are measured on the server's receipt ticks. A weapon whose
+exact 60 Hz input spacing proves its cooldown elapsed may be received up to
+`PROVEN_COOLDOWN_ALLOWANCE_TICKS` (the movement clock's catch-up bound,
+14 ticks) before its deadline, to absorb network jitter and the 60 Hz server
+loop. That earliness is carried into the class's next deadline, so a stream
+of shots never fires faster than its authored delays.
+
 The server wrapper (`arena/positions/weapons.rs`) adds mine limits,
 proximity-bomb safety, flag-carrier upgrades and the post-Warp lock. A shot
 without a valid combat-view receipt is blocked.
+
+Proximity-bomb safety (BombSafety) refuses a fired, not dropped, proximity
+bomb when a hostile ship lies within `(ProximityDistance + level - 1) * 16`
+pixels. The server judges it against the frame the shooter's combat-view
+receipt names, the remote ship positions that browser had applied, measured
+from the shooter's reported, rounded position. The browser keeps the remote
+positions of each applied snapshot and judges the same frame and rounded
+position before predicting the bomb and its recoil, so the two agree at the
+boundary instead of differing by the presentation delay. Without a decision
+or retained frame, the server falls back to the latest positions.
 
 ### 6.3 Specials
 

@@ -33,6 +33,7 @@ pub(super) struct LoadedGraphics {
     pub(super) rocket: SpriteSheet,
     pub(super) super_effect: SpriteSheet,
     pub(super) shield_effect: SpriteSheet,
+    pub(super) leader_badge: SpriteSheet,
     pub(super) powerball: SpriteSheet,
     pub(super) goal: SpriteSheet,
     pub(super) flag: SpriteSheet,
@@ -279,6 +280,11 @@ pub(super) fn load_original_graphics() -> LoadedGraphics {
         vec2(16.0, 16.0),
         1.0,
     );
+    let leader_badge = SpriteSheet::from_bm2(
+        include_bytes!("../../../assets/graphics/ssshield.bm2"),
+        vec2(16.0, 16.0),
+        1.0,
+    );
     let powerball = SpriteSheet::from_bm2(
         include_bytes!("../../../assets/graphics/powerb.bm2"),
         vec2(16.0, 16.0),
@@ -380,6 +386,7 @@ pub(super) fn load_original_graphics() -> LoadedGraphics {
         rocket,
         super_effect,
         shield_effect,
+        leader_badge,
         powerball,
         goal,
         flag,
