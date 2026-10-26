@@ -312,7 +312,7 @@ server_session_id:u64 | arena_stream_id:u64 | event_id:u32 | server_tick:u32
 | 1 Weapon | source player/session/life, shot group, exact f32 pose and velocity, frequency, ship, weapon word |
 | 2 WatchDamage | victim and shooter identities, weapon, damage, energy before and after, projectile id, damage sequence, lethal flag |
 | 3 Repel mutations | new state for up to 16 projectiles or decoys pushed by a Repel |
-| 4 Projectile state | the weapon source plus projectile id, child index, current position and velocity, expiry, burst state, bounces left, optional proximity-sensor target |
+| 4 Projectile state | the weapon source plus projectile id, child index, current position and velocity, expiry, burst state, bounces left, optional proximity-sensor target (proximity bombs and Thors) |
 | 5 Owner weapons cancelled | cancels a player's mines/decoys up to a shot group |
 
 Every payload is self-contained: it can be drawn without consulting the
@@ -324,6 +324,16 @@ interest, with that recipient's own nonzero event ids. Up to 3,072 events can
 wait per recipient. The client authenticates the session and arena stream,
 then deduplicates within a 4,096-id window, so the same event arriving on two
 channels, late or out of order, applies once.
+
+Both ends validate a projectile state the same way
+(`RealtimeProjectileStateEvent::invalid_field` names the failing check). The
+server checks each one before sending: a state that would fail is withheld with
+a WARN, and it still opens the recipient's presentation clock as if it had been
+sent, so a pending hit is never held back. On the game and events channels the
+client skips a `0x7d` it cannot decode and counts it (`realtime_event_rejects`,
+with a WARN at the first and each power of two), so one bad event cannot fail
+the frame's poll and delay the packets behind it. The reliable channel still
+fails closed.
 
 **Batching (`0x84`).** A recipient's events from one tick leave as one message:
 

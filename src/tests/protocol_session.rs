@@ -5692,6 +5692,112 @@ fn authenticated_realtime_weapon_is_generation_bound_wrap_safe_and_duplicate_ide
 }
 
 #[test]
+fn an_undecodable_realtime_event_is_skipped_and_counted_without_failing_the_poll() {
+    use crate::realtime_event::*;
+    use crate::transport::PacketTransportLane;
+
+    let mut session =
+        ClientProtocolSession::new(true, ArenaLoginRequest::spectator_default(), 0, 0);
+    session
+        .handle_server_packet(
+            &ServerClockBootstrap {
+                server_session_id: 77,
+                arena_stream_id: 1,
+                server_tick: 100,
+                input_sequence_base: 1,
+                position_sequence_base: 1,
+                weapon_sequence_base: 1,
+                reliable_sequence_base: 0,
+                tick_rate_hz: 60,
+                snapshot_rate_hz: 30,
+            }
+            .encode(),
+        )
+        .unwrap();
+    session
+        .handle_server_packet(&[ServerPacket::JOIN_GAME])
+        .unwrap();
+    let state = |event_id: u32, weapon_type: u16| {
+        AuthenticatedRealtimeEvent {
+            server_session_id: 77,
+            arena_stream_id: 1,
+            event_id,
+            server_tick: 200,
+            payload: RealtimeEventPayload::ProjectileState(RealtimeProjectileStateEvent {
+                source_input_sequence: None,
+                terminal: false,
+                motion_frozen: false,
+                source: RealtimeWeaponEvent {
+                    source_player_id: 7,
+                    source_session_id: 55,
+                    source_life_seq: 9,
+                    shot_group_id: 10,
+                    x: 100.0,
+                    y: 100.0,
+                    velocity_x: 0.0,
+                    velocity_y: 0.0,
+                    orientation: 0.25,
+                    frequency: 1,
+                    ship: 0,
+                    weapon_data: weapon_type,
+                },
+                projectile_id: 20 + event_id,
+                source_server_tick: 190,
+                source_projectile_index: 0,
+                weapon_data: weapon_type,
+                position_x: 110.0,
+                position_y: 100.0,
+                velocity_x: 0.0,
+                velocity_y: 0.0,
+                expiry_tick: Some(500),
+                behavior: PROJECTILE_BEHAVIOR_STANDARD,
+                bounces_remaining: 0,
+                proximity: Some(RealtimeProjectileProximityState {
+                    target_player_id: 8,
+                    target_life_seq: 3,
+                    sensor_end_tick: 300,
+                    highest_axis_offset: 40.0,
+                }),
+            }),
+        }
+        .encode()
+    };
+    let projectile_states = |actions: &ClientProtocolActions| {
+        actions
+            .events
+            .iter()
+            .filter(|event| matches!(event, ClientProtocolEvent::RealtimeProjectileState { .. }))
+            .count()
+    };
+
+    // A bullet never carries a proximity sensor, so this state is invalid.
+    let invalid = state(10, 2);
+    for lane in [PacketTransportLane::Event, PacketTransportLane::Game] {
+        let skipped = session
+            .handle_transport_packet_from_lane_at_tick(&invalid, 0, lane)
+            .expect("one undecodable event does not fail the poll");
+        assert!(skipped.events.is_empty());
+    }
+    assert_eq!(session.realtime_event_rejects, 2);
+    assert_eq!(
+        session.last_realtime_event_reject.as_deref(),
+        Some("realtime projectile state payload is invalid: proximity")
+    );
+    assert!(
+        session.handle_server_packet(&invalid).is_err(),
+        "the reliable path stays fail closed"
+    );
+    assert_eq!(session.realtime_event_rejects, 2);
+
+    // The next event is processed, and so is a Thor's armed sensor.
+    let thor = session
+        .handle_transport_packet_from_lane_at_tick(&state(11, 8), 0, PacketTransportLane::Event)
+        .unwrap();
+    assert_eq!(projectile_states(&thor), 1);
+    assert_eq!(session.realtime_event_rejects, 2);
+}
+
+#[test]
 fn watch_damage_per_carrier_dedupe_covers_full_horizon_wrap_and_lifecycle() {
     fn bootstrap(arena_stream_id: u64) -> ServerClockBootstrap {
         ServerClockBootstrap {

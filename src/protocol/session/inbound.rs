@@ -1919,6 +1919,23 @@ impl ClientProtocolSession {
         let result = self.handle_plain_transport_packet_at_tick(packet, local_tick);
         self.chunker.clear_incomplete();
         self.chunker = reliable_chunker;
+        // A realtime event is self-contained and independently deduplicated:
+        // skip one that fails to decode and count it, rather than failing the
+        // whole poll and holding back the rest of this frame's packets.
+        if packet.first() == Some(&crate::realtime_event::REALTIME_EVENT_PACKET)
+            && let Err(reason) = &result
+        {
+            self.realtime_event_rejects = self.realtime_event_rejects.saturating_add(1);
+            self.last_realtime_event_reject = Some(reason.clone());
+            if self.realtime_event_rejects.is_power_of_two() {
+                tracing::warn!(
+                    rejects = self.realtime_event_rejects,
+                    %reason,
+                    "skipped an undecodable realtime event"
+                );
+            }
+            return Ok(ClientProtocolActions::default());
+        }
         if result.as_ref().is_ok_and(|actions| {
             actions
                 .events

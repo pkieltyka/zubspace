@@ -276,7 +276,7 @@ Events are one-shot facts kept out of the snapshot state
 | 1 | 74 | Weapon fired: source player, session and life, `shot_group_id:u64`, raw f32 position, velocity and orientation, frequency, ship, `weapon_data` |
 | 2 | 72 | WATCH_DAMAGE: victim and shooter (player, session, life), weapon, damage, energy before and after, projectile id, damage sequence, lethal |
 | 3 | 28 + 45 per state (1-16) | Projectile and Decoy states after a Repel; entity kind 1 projectile, 2 Decoy, bit `0x80` held |
-| 4 | 122, or 124 | One projectile or Decoy state. Flags: `0x01` expiry, `0x02` proximity sensor, `0x04` terminal, `0x08` appended source input sequence (the 124-byte form), `0x10` held in place |
+| 4 | 122, or 124 | One projectile or Decoy state. Flags: `0x01` expiry, `0x02` proximity sensor (proximity bombs and Thors), `0x04` terminal, `0x08` appended source input sequence (the 124-byte form), `0x10` held in place |
 | 5 | 52 | Owner weapon cancellation: silently removes one source session's weapons and Decoys through a given shot group, optionally bounded by an owner input sequence |
 
 A departure's kind 5 travels inside an ordered reliable message so it reaches

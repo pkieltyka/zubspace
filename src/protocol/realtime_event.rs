@@ -107,6 +107,91 @@ pub(crate) struct RealtimeProjectileStateEvent {
     pub(crate) proximity: Option<RealtimeProjectileProximityState>,
 }
 
+impl RealtimeProjectileStateEvent {
+    /// The first rule this state breaks, or `None` when a recipient accepts it.
+    /// The client rejects a state that breaks any rule; the server checks the
+    /// same rules before sending one, so a regression is withheld and logged
+    /// there instead.
+    pub(crate) fn invalid_field(&self) -> Option<&'static str> {
+        let source = self.source;
+        let source_type = source.weapon_data as u8 & 0x1f;
+        let state_type = self.weapon_data as u8 & 0x1f;
+        let flight_type = matches!(state_type, 1 | 2 | 3 | 4 | 7 | 8 | 15);
+        let checks = [
+            (source.source_session_id == 0, "source_session_id"),
+            (source.source_life_seq == 0, "source_life_seq"),
+            (source.shot_group_id == 0, "shot_group_id"),
+            (source.ship >= 8, "ship"),
+            (self.projectile_id == 0, "projectile_id"),
+            (!(1..=8).contains(&source_type), "source_weapon_type"),
+            (
+                !((1..=8).contains(&state_type) || state_type == 15),
+                "weapon_type",
+            ),
+            (
+                state_type != source_type && state_type != 15,
+                "weapon_type_mismatch",
+            ),
+            (
+                !matches!(
+                    self.behavior,
+                    PROJECTILE_BEHAVIOR_STANDARD
+                        | PROJECTILE_BEHAVIOR_BURST_INACTIVE
+                        | PROJECTILE_BEHAVIOR_BURST_ACTIVE
+                ),
+                "behavior",
+            ),
+            (self.terminal && !flight_type, "terminal_weapon_type"),
+            (
+                self.terminal && self.proximity.is_some(),
+                "terminal_proximity",
+            ),
+            (
+                self.motion_frozen && (self.terminal || self.expiry_tick.is_none() || !flight_type),
+                "motion_frozen",
+            ),
+            (
+                self.behavior != PROJECTILE_BEHAVIOR_STANDARD && state_type != 7,
+                "behavior_weapon_type",
+            ),
+            // Proximity bombs and Thors both arm a sensor (the server's
+            // `matches!(weapon_type, 4 | 8)` in authority_projectiles).
+            (
+                self.proximity.is_some_and(|proximity| {
+                    !matches!(state_type, 4 | 8)
+                        || proximity.target_life_seq == 0
+                        || !proximity.highest_axis_offset.is_finite()
+                        || proximity.highest_axis_offset < 0.0
+                }),
+                "proximity",
+            ),
+            (
+                ![
+                    source.x,
+                    source.y,
+                    source.velocity_x,
+                    source.velocity_y,
+                    source.orientation,
+                    self.position_x,
+                    self.position_y,
+                    self.velocity_x,
+                    self.velocity_y,
+                ]
+                .into_iter()
+                .all(f32::is_finite),
+                "non_finite",
+            ),
+            (
+                !(0.0..=1.0).contains(&source.orientation),
+                "source_orientation",
+            ),
+        ];
+        checks
+            .into_iter()
+            .find_map(|(failed, field)| failed.then_some(field))
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct RealtimeProjectileProximityState {
     pub(crate) target_player_id: u16,
@@ -580,58 +665,20 @@ impl AuthenticatedRealtimeEvent {
                         }
                     }),
                 };
-                let source_type = source.weapon_data as u8 & 0x1f;
-                let state_type = state.weapon_data as u8 & 0x1f;
-                if source.source_session_id == 0
-                    || source.source_life_seq == 0
-                    || source.shot_group_id == 0
-                    || source.ship >= 8
-                    || state.projectile_id == 0
-                    || !(1..=8).contains(&source_type)
-                    || (!((1..=8).contains(&state_type) || state_type == 15))
-                    || (state_type != source_type && state_type != 15)
-                    || flags
-                        & !(PROJECTILE_STATE_HAS_EXPIRY
-                            | PROJECTILE_STATE_HAS_PROXIMITY_SENSOR
-                            | PROJECTILE_STATE_TERMINAL
-                            | PROJECTILE_STATE_MOTION_FROZEN
-                            | PROJECTILE_STATE_HAS_INPUT_SEQUENCE)
-                        != 0
-                    || !matches!(
-                        state.behavior,
-                        PROJECTILE_BEHAVIOR_STANDARD
-                            | PROJECTILE_BEHAVIOR_BURST_INACTIVE
-                            | PROJECTILE_BEHAVIOR_BURST_ACTIVE
-                    )
-                    || (state.terminal && !matches!(state_type, 1 | 2 | 3 | 4 | 7 | 8 | 15))
-                    || (state.terminal && state.proximity.is_some())
-                    || (state.motion_frozen
-                        && (state.terminal
-                            || state.expiry_tick.is_none()
-                            || !matches!(state_type, 1 | 2 | 3 | 4 | 7 | 8 | 15)))
-                    || (state.behavior != PROJECTILE_BEHAVIOR_STANDARD && state_type != 7)
-                    || state.proximity.is_some_and(|proximity| {
-                        state_type != 4
-                            || proximity.target_life_seq == 0
-                            || !proximity.highest_axis_offset.is_finite()
-                            || proximity.highest_axis_offset < 0.0
-                    })
-                    || ![
-                        source.x,
-                        source.y,
-                        source.velocity_x,
-                        source.velocity_y,
-                        source.orientation,
-                        state.position_x,
-                        state.position_y,
-                        state.velocity_x,
-                        state.velocity_y,
-                    ]
-                    .into_iter()
-                    .all(f32::is_finite)
-                    || !(0.0..=1.0).contains(&source.orientation)
+                if flags
+                    & !(PROJECTILE_STATE_HAS_EXPIRY
+                        | PROJECTILE_STATE_HAS_PROXIMITY_SENSOR
+                        | PROJECTILE_STATE_TERMINAL
+                        | PROJECTILE_STATE_MOTION_FROZEN
+                        | PROJECTILE_STATE_HAS_INPUT_SEQUENCE)
+                    != 0
                 {
-                    return Err("realtime projectile state payload is invalid".to_string());
+                    return Err("realtime projectile state payload is invalid: flags".to_string());
+                }
+                if let Some(field) = state.invalid_field() {
+                    return Err(format!(
+                        "realtime projectile state payload is invalid: {field}"
+                    ));
                 }
                 RealtimeEventPayload::ProjectileState(state)
             }
@@ -1223,6 +1270,105 @@ mod tests {
         let mut invalid_group = encoded;
         invalid_group[41..49].copy_from_slice(&0_u64.to_le_bytes());
         assert!(AuthenticatedRealtimeEvent::parse(&invalid_group).is_err());
+    }
+    #[test]
+    fn thor_projectile_state_carries_its_armed_proximity_sensor() {
+        // The server arms a sensor for Thors as well as proximity bombs, so an
+        // active Thor state carries proximity data and must parse.
+        let proximity = RealtimeProjectileProximityState {
+            target_player_id: 5,
+            target_life_seq: 6,
+            sensor_end_tick: 7,
+            highest_axis_offset: 80.5,
+        };
+        let thor = RealtimeProjectileStateEvent {
+            source_input_sequence: None,
+            terminal: false,
+            motion_frozen: false,
+            source: RealtimeWeaponEvent {
+                source_player_id: 4,
+                source_session_id: 11,
+                source_life_seq: 12,
+                shot_group_id: 13,
+                x: 100.25,
+                y: 200.5,
+                velocity_x: -3.0,
+                velocity_y: 4.0,
+                orientation: 0.25,
+                frequency: 12,
+                ship: 1,
+                weapon_data: 8,
+            },
+            projectile_id: 21,
+            source_server_tick: 40,
+            source_projectile_index: 0,
+            weapon_data: 8,
+            position_x: 120.25,
+            position_y: 240.5,
+            velocity_x: -30.0,
+            velocity_y: 40.0,
+            expiry_tick: Some(400),
+            behavior: PROJECTILE_BEHAVIOR_STANDARD,
+            bounces_remaining: 0,
+            proximity: Some(proximity),
+        };
+        assert_eq!(thor.invalid_field(), None);
+        let event = AuthenticatedRealtimeEvent {
+            server_session_id: 7,
+            arena_stream_id: 8,
+            event_id: 9,
+            server_tick: 50,
+            payload: RealtimeEventPayload::ProjectileState(thor),
+        };
+        assert_eq!(
+            AuthenticatedRealtimeEvent::parse(&event.encode()),
+            Ok(event)
+        );
+        let held = RealtimeProjectileStateEvent {
+            motion_frozen: true,
+            ..thor
+        };
+        assert_eq!(held.invalid_field(), None);
+
+        for weapon_type in [1, 2, 3, 7] {
+            let mut other = thor;
+            other.source.weapon_data = weapon_type;
+            other.weapon_data = weapon_type;
+            other.behavior = if weapon_type == 7 {
+                PROJECTILE_BEHAVIOR_BURST_ACTIVE
+            } else {
+                PROJECTILE_BEHAVIOR_STANDARD
+            };
+            assert_eq!(other.invalid_field(), Some("proximity"));
+            let error = AuthenticatedRealtimeEvent::parse(
+                &AuthenticatedRealtimeEvent {
+                    payload: RealtimeEventPayload::ProjectileState(other),
+                    ..event
+                }
+                .encode(),
+            )
+            .unwrap_err();
+            assert_eq!(
+                error,
+                "realtime projectile state payload is invalid: proximity"
+            );
+        }
+        let unarmed = RealtimeProjectileStateEvent {
+            proximity: Some(RealtimeProjectileProximityState {
+                target_life_seq: 0,
+                ..proximity
+            }),
+            ..thor
+        };
+        assert_eq!(unarmed.invalid_field(), Some("proximity"));
+        let turned = RealtimeProjectileStateEvent {
+            source: RealtimeWeaponEvent {
+                orientation: 2.0,
+                ..thor.source
+            },
+            ..thor
+        };
+        assert_eq!(turned.invalid_field(), Some("source_orientation"));
     }
     #[test]
     fn owner_weapon_cancellation_roundtrips_exact_scope_and_cutoffs() {

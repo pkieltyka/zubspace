@@ -81,6 +81,7 @@ Entries containing a space are log messages; the others are values of the
 | `page visibility changed` | INFO | The page hid or showed, pausing or resuming connection-quality measurement (see [connection quality](connection-quality.md#measurement-window)) |
 | `server weapon rejected` | INFO | A refused weapon request; `block_cause` names a block that applied before the fire rules (`bomb_safety`, `mine_limit`, `objective_ball`, `objective_lock`, `warp_bomb_lock`, or, when the shot had no verified combat view, the input's frozen `combat_view_*` receipt rejection such as `combat_view_application_too_far_behind`, else a `projectile_timeline_*` reason), else `none` |
 | `canonical_mismatch_detail` | WARN | Detail on a rejected movement replay, at most one per life per ten seconds |
+| `withheld a projectile state the client would reject` | WARN | A projectile state that fails the client's validation was not sent; `field` names the failed check; at most one per second (see [networking](networking.md#realtime-events)) |
 | `server zone_file_manifest_resolved` | INFO | Per join: zone files held and sent, bytes and elapsed time (see [zone file cache](zone-file-cache.md)) |
 | `client_debug_window` | INFO | Each accepted client presentation upload |
 
@@ -132,6 +133,7 @@ Labeled metrics use only fixed label values.
 | `zubspace_snapshots_with_holds_total`, `zubspace_snapshot_entities_held_total` | counter | Snapshots that held some actors at their acknowledged state to fit the budget, and how many actors were held |
 | `zubspace_realtime_event_send_deferred_total` | counter | Realtime events postponed to a later tick by the send budget |
 | `zubspace_realtime_events_sent_total{kind}` | counter | Realtime events queued, by `kind`: `weapon`, `watch_damage`, `repel_mutations`, `projectile_state`, `owner_weapons_cancelled` |
+| `zubspace_projectile_states_withheld_total` | counter | Projectile states not sent because the client would reject them |
 | `zubspace_realtime_event_game_copies_total{decision}` | counter | Event messages also copied to the game channel (`sent`) or not copied because the link showed no loss (`skipped`) |
 | `zubspace_movement_snapbacks_total` | counter | Server-issued corrections for sustained movement drift |
 | `zubspace_observer_auto_targets{target_ticks}` | gauge | Joined sessions on the automatic presentation profile, by current target delay (`7`, `10`, `15`, `20` ticks) |

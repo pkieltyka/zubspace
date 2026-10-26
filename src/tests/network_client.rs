@@ -40,10 +40,28 @@ fn assert_captured_terminal_published_once(actions: &ClientProtocolActions) {
 }
 
 #[test]
-fn decoded_terminal_survives_a_later_malformed_datagram_in_the_same_poll() {
+fn a_malformed_realtime_event_is_skipped_without_failing_the_poll() {
     let mut client = captured_terminal_poll_client(vec![(
         vec![0x7d, 2],
         crate::transport::PacketTransportLane::Event,
+    )]);
+    let actions = client.poll_actions_at_tick(6_158).unwrap();
+    assert_captured_terminal_published_once(&actions);
+    assert_eq!(client.session().realtime_event_rejects, 1);
+    assert!(
+        client
+            .poll_actions_at_tick(6_159)
+            .unwrap()
+            .events
+            .is_empty()
+    );
+}
+
+#[test]
+fn decoded_terminal_survives_a_later_malformed_reliable_packet_in_the_same_poll() {
+    let mut client = captured_terminal_poll_client(vec![(
+        vec![0x7d, 2],
+        crate::transport::PacketTransportLane::Reliable,
     )]);
     assert!(client.poll_actions_at_tick(6_158).is_err());
     let recovered = client.poll_actions_at_tick(6_159).unwrap();
