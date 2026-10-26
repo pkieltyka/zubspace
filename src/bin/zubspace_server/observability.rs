@@ -353,6 +353,13 @@ pub(crate) fn metrics(state: &ServerState, started_at: Instant) -> String {
         "counter",
         state.telemetry.tick_phase_logs_suppressed,
     );
+    scalar(
+        &mut out,
+        "zubspace_projectile_states_withheld_total",
+        "Projectile states not sent because the client would reject them.",
+        "counter",
+        crate::snapshot::withheld_projectile_states(),
+    );
     for (name, help, total) in [
         (
             "zubspace_rtc_udp_datagrams_sent_total",

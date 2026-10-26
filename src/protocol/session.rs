@@ -402,6 +402,10 @@ pub struct ClientProtocolSession {
     pub(crate) file_chunks_accepted: u32,
     /// Counts chunks that reached the assembler and were rejected by it (offset gap, identity change, orphan).
     pub(crate) file_chunk_assembler_rejects: u32,
+    /// Realtime (`0x7d`) events on the game or event lane that failed to decode.
+    /// Each is skipped on its own, so one bad event cannot stall the poll.
+    pub(crate) realtime_event_rejects: u32,
+    pub(crate) last_realtime_event_reject: Option<String>,
     /// Structurally parsed downloads retained in manifest order until every
     /// LVZ's aggregate decode-work/header budget has passed. Only then are all
     /// archives sealed and published together.
@@ -639,6 +643,8 @@ impl ClientProtocolSession {
             file_chunk_index_mismatches: 0,
             file_chunks_accepted: 0,
             file_chunk_assembler_rejects: 0,
+            realtime_event_rejects: 0,
+            last_realtime_event_reject: None,
             pending_zone_downloads: Vec::new(),
             pending_zone_render_bytes: 0,
             pending_zone_render_high_water_bytes: 0,

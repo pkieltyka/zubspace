@@ -238,6 +238,52 @@ impl PendingRealtimeEvents {
     }
 }
 
+static WITHHELD_PROJECTILE_STATES: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+static WITHHELD_PROJECTILE_STATE_LOG_SECOND: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(u32::MAX);
+
+/// Total projectile states withheld because the client would reject them.
+pub(crate) fn withheld_projectile_states() -> u64 {
+    WITHHELD_PROJECTILE_STATES.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// The client rejects a projectile state that breaks
+/// `RealtimeProjectileStateEvent::invalid_field`, so it is never sent. Warn at
+/// most once a server second, naming the rule, so a regression shows in the
+/// log rather than as a red error in players' chat.
+fn warn_withheld_projectile_state(
+    recipient_id: u16,
+    event_id: u32,
+    tick: u32,
+    field: &'static str,
+    state: crate::realtime_event::RealtimeProjectileStateEvent,
+) {
+    use std::sync::atomic::Ordering::Relaxed;
+    let withheld_total = WITHHELD_PROJECTILE_STATES.fetch_add(1, Relaxed) + 1;
+    let second = tick / 100;
+    if WITHHELD_PROJECTILE_STATE_LOG_SECOND.swap(second, Relaxed) == second {
+        return;
+    }
+    tracing::warn!(
+        recipient_id,
+        event_id,
+        field,
+        withheld_total,
+        projectile_id = state.projectile_id,
+        weapon_type = state.weapon_data & 0x1f,
+        source_weapon_type = state.source.weapon_data & 0x1f,
+        owner_id = state.source.source_player_id,
+        owner_life_seq = state.source.source_life_seq,
+        terminal = state.terminal,
+        motion_frozen = state.motion_frozen,
+        has_expiry = state.expiry_tick.is_some(),
+        proximity = state.proximity.is_some(),
+        behavior = state.behavior,
+        "withheld a projectile state the client would reject"
+    );
+}
+
 fn projectile_source_runtime(
     source: crate::realtime_event::RealtimeWeaponEvent,
 ) -> PlayerRuntimeIdentity {
@@ -2075,6 +2121,7 @@ fn emit_snapshots_for_tick_inner_at_tick(
         // nor embeds private snapshot state in the event carrier.
         let mut sending = Vec::new();
         let mut packets = Vec::new();
+        let mut withheld = Vec::new();
         while let Some(envelope) = realtime_events.queue.pop_front() {
             #[cfg(debug_assertions)]
             if projectile_presentation_identity(envelope.payload).is_some()
@@ -2082,6 +2129,14 @@ fn emit_snapshots_for_tick_inner_at_tick(
             {
                 realtime_events.queue.push_front(envelope);
                 break;
+            }
+            if let crate::realtime_event::RealtimeEventPayload::ProjectileState(state) =
+                envelope.payload
+                && let Some(field) = state.invalid_field()
+            {
+                warn_withheld_projectile_state(recipient_id, envelope.event_id, tick, field, state);
+                withheld.push(envelope);
+                continue;
             }
             let packet = crate::realtime_event::AuthenticatedRealtimeEvent {
                 server_session_id: crate::wire::server_session_id(),
@@ -2111,6 +2166,17 @@ fn emit_snapshots_for_tick_inner_at_tick(
         }
         for (envelope, kind) in sending.iter().zip(kinds) {
             emission.realtime_event_sent(kind);
+            if let Some(identity) = projectile_presentation_identity(envelope.payload) {
+                let _ = client.threat_presentation.observe_projectile_emitted(
+                    identity,
+                    envelope.event_id,
+                    tick,
+                );
+            }
+        }
+        // A withheld state keeps the presentation clock it would have had if
+        // sent and rejected, so a pending hit is never held back by it.
+        for envelope in &withheld {
             if let Some(identity) = projectile_presentation_identity(envelope.payload) {
                 let _ = client.threat_presentation.observe_projectile_emitted(
                     identity,
@@ -2525,6 +2591,152 @@ mod tests {
             )
             .len(),
             1
+        );
+    }
+
+    /// An observer with an owner's Thor in range, whose sensor is armed on
+    /// `proximity_target`. Returns the shared state, the observer's id and
+    /// receiver, and the Thor's projectile id.
+    fn observer_with_armed_thor(
+        proximity_target: crate::authority_identity::LifeIdentity,
+    ) -> (
+        std::sync::Arc<std::sync::Mutex<crate::state::ServerState>>,
+        u16,
+        std::sync::mpsc::Receiver<Vec<u8>>,
+    ) {
+        let shared =
+            std::sync::Arc::new(std::sync::Mutex::new(crate::state::ServerState::default()));
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let owner_id = crate::arena::register_connection(&shared, tx);
+        crate::arena::join_arena(&shared, owner_id, 0);
+        let (tx, rx) = std::sync::mpsc::channel();
+        let observer_id = crate::arena::register_connection(&shared, tx);
+        crate::arena::join_arena(&shared, observer_id, 8);
+        let mut state = shared.lock().unwrap();
+        let owner = state.active_player_runtime_identity(owner_id).unwrap();
+        let source = crate::realtime_event::RealtimeWeaponEvent {
+            source_player_id: owner_id,
+            source_session_id: owner.session.session_id.get(),
+            source_life_seq: owner.life.life_seq,
+            shot_group_id: 43,
+            x: 100.0,
+            y: 100.0,
+            velocity_x: 0.0,
+            velocity_y: 0.0,
+            orientation: 0.25,
+            frequency: state.clients[&owner_id].player.frequency,
+            ship: 0,
+            weapon_data: 8,
+        };
+        state.record_projectile(crate::state::ServerProjectile {
+            id: 77,
+            shot_group_id: 43,
+            shot_index: 0,
+            owner_id,
+            owner_life_seq: owner.life.life_seq,
+            presentation_source: Some(source),
+            combat_timeline: None,
+            weapon_data: 8,
+            x: 100,
+            y: 100,
+            timestamp: 100,
+            created_tick: 100,
+            velocity_x: 0,
+            velocity_y: 0,
+            expiry_tick: Some(500),
+            pos_x: 100.0,
+            source_server_tick: None,
+            precise_velocity: None,
+            pos_y: 100.0,
+            bounces_remaining: 0,
+            behavior: crate::gameplay_rules::ProjectileBehavior::Standard,
+            proximity_target: Some(proximity_target),
+            proximity_sensor_end_tick: Some(300),
+            proximity_highest_offset: 40.0,
+        });
+        let observer = state.clients.get_mut(&observer_id).unwrap();
+        observer.snapshot_ready = true;
+        let position = observer.aoi_observer_position.as_mut().unwrap();
+        position[4..6].copy_from_slice(&100_u16.to_le_bytes());
+        position[15..17].copy_from_slice(&100_u16.to_le_bytes());
+        drop(state);
+        (shared, observer_id, rx)
+    }
+
+    fn sent_projectile_states(
+        rx: &std::sync::mpsc::Receiver<Vec<u8>>,
+    ) -> Vec<crate::realtime_event::RealtimeProjectileStateEvent> {
+        rx.try_iter()
+            .filter(|packet| packet.first() == Some(&crate::realtime_event::REALTIME_EVENT_PACKET))
+            .map(|packet| {
+                crate::realtime_event::AuthenticatedRealtimeEvent::parse(&packet)
+                    .expect("every sent realtime event parses at the client")
+            })
+            .filter_map(|event| match event.payload {
+                crate::realtime_event::RealtimeEventPayload::ProjectileState(state) => Some(state),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_thor_with_an_armed_sensor_is_sent_as_a_state_the_client_accepts() {
+        let (shared, observer_id, rx) =
+            observer_with_armed_thor(crate::authority_identity::LifeIdentity::new(9, 3));
+        let built = active_projectile_state_for_recipient(
+            &shared.lock().unwrap(),
+            observer_id,
+            100.0,
+            100.0,
+        );
+        assert_eq!(built.len(), 1);
+        let proximity = built[0].1.proximity.expect("the armed sensor is published");
+        assert_eq!(
+            (proximity.target_player_id, proximity.target_life_seq),
+            (9, 3)
+        );
+        assert_eq!(built[0].1.invalid_field(), None);
+        emit_snapshots_for_tick_at_tick(&shared, 200);
+        let sent = sent_projectile_states(&rx);
+        assert!(
+            sent.iter().any(|state| state.projectile_id == 77
+                && state.weapon_data == 8
+                && state.proximity == Some(proximity)),
+            "the Thor state reaches the observer: {sent:?}"
+        );
+    }
+
+    #[test]
+    fn a_state_the_client_would_reject_is_withheld_but_keeps_its_presentation_clock() {
+        // A sensor bound to life zero fails the client's validation.
+        let (shared, observer_id, rx) =
+            observer_with_armed_thor(crate::authority_identity::LifeIdentity::new(9, 0));
+        let built = active_projectile_state_for_recipient(
+            &shared.lock().unwrap(),
+            observer_id,
+            100.0,
+            100.0,
+        );
+        assert_eq!(built.len(), 1);
+        assert_eq!(built[0].1.invalid_field(), Some("proximity"));
+        let identity = built[0].0;
+        let withheld = withheld_projectile_states();
+        emit_snapshots_for_tick_at_tick(&shared, 200);
+        assert!(
+            sent_projectile_states(&rx).is_empty(),
+            "the invalid state never reaches the wire"
+        );
+        assert!(withheld_projectile_states() > withheld);
+        let state = shared.lock().unwrap();
+        let client = &state.clients[&observer_id];
+        assert!(client.pending_realtime_events.queue.is_empty());
+        let open_tick = 200 + crate::threat_presentation::PROJECTILE_PRESENTATION_LEAD_TICKS;
+        let readiness = client
+            .threat_presentation
+            .exact_projectile_readiness(identity, open_tick);
+        assert!(
+            readiness.harmful,
+            "readiness opens as if the state had been sent: {readiness:?}"
         );
     }
 

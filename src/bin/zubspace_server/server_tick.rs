@@ -6306,6 +6306,75 @@ mod tests {
     // The equivalent coverage for the snapshot stream lives in
     // `tests::snapshot::server_emits_one_snapshot_per_joined_client_at_interval_tick`.
 
+    // Live bot combat around joined humans: every projectile state the server
+    // queues must decode on the client (`RealtimeProjectileStateEvent::invalid_field`).
+    #[test]
+    fn live_bot_combat_queues_only_client_valid_projectile_states() {
+        let state = Arc::new(Mutex::new(ServerState {
+            config: ServerConfig {
+                bot_count: 15,
+                ..ServerConfig::default()
+            },
+            ..ServerState::default()
+        }));
+        state.lock().expect("state").initialize_configured_bots();
+        let mut receivers = Vec::new();
+        let mut humans = Vec::new();
+        for _ in 0..2 {
+            let (tx, rx) = mpsc::channel();
+            let player_id = register_connection(&state, tx);
+            join_arena(&state, player_id, 0);
+            receivers.push(rx);
+            humans.push(player_id);
+        }
+        let start = 40_000;
+        {
+            let mut locked = state.lock().expect("state");
+            let (x, y) = crate::zone::server_spawn_coordinates(locked.zone_map());
+            for (index, &player_id) in humans.iter().enumerate() {
+                configure_damage_test_client(
+                    &mut locked,
+                    player_id,
+                    start,
+                    x + 40 * index as u16,
+                    y,
+                    player_id,
+                    1_700,
+                );
+                locked.clients.get_mut(&player_id).unwrap().snapshot_ready = true;
+            }
+        }
+        let mut sent = 0_usize;
+        for step in 0..3_000_u32 {
+            run_server_tick_at_tick(&state, Instant::now(), start + step * 5 / 3);
+            let locked = state.lock().expect("state");
+            for &player_id in &humans {
+                for envelope in &locked.clients[&player_id].pending_realtime_events.queue {
+                    if let crate::realtime_event::RealtimeEventPayload::ProjectileState(event) =
+                        envelope.payload
+                    {
+                        assert_eq!(event.invalid_field(), None, "{event:?}");
+                    }
+                }
+            }
+            drop(locked);
+            for packet in receivers.iter().flat_map(|rx| rx.try_iter()) {
+                if packet.first() != Some(&crate::realtime_event::REALTIME_EVENT_PACKET) {
+                    continue;
+                }
+                let event = crate::realtime_event::AuthenticatedRealtimeEvent::parse(&packet)
+                    .unwrap_or_else(|error| panic!("the client rejects a sent event: {error}"));
+                if matches!(
+                    event.payload,
+                    crate::realtime_event::RealtimeEventPayload::ProjectileState(_)
+                ) {
+                    sent += 1;
+                }
+            }
+        }
+        assert!(sent > 0, "bot combat sent projectile states");
+    }
+
     #[test]
     fn high_rate_bot_motion_matches_the_same_unique_gameplay_tick_schedule() {
         let run = |rate: u16| {
