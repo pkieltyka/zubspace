@@ -333,6 +333,7 @@ impl Game {
             repel_movement_sequence_window: None,
             pending_warp_relocation_life_seq: None,
             pending_warp_relocation_sequences: std::collections::VecDeque::new(),
+            pending_warp_relocation_staged: false,
             last_input: PlayerInput::default(),
             next_input_seq: 0,
             suppress_lifecycle_tail_position: false,
@@ -392,6 +393,7 @@ impl Game {
             #[cfg(any(test, target_arch = "wasm32"))]
             quality_return_recovery: None,
             menu_visible: false,
+            frame_rate: Default::default(),
             main_menu_requested: false,
             scoreboard_visible: false,
             scoreboard_scroll: Default::default(),

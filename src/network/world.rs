@@ -418,6 +418,7 @@ impl NetworkWorld {
             | ClientProtocolEvent::FrequencyCutoverAcknowledged(_)
             | ClientProtocolEvent::ShipChangeRejected(_)
             | ClientProtocolEvent::ConnectionQualityDirective(_)
+            | ClientProtocolEvent::ConnectionQualityWarning(_)
             | ClientProtocolEvent::SpawnIdleSpectator(_)
             | ClientProtocolEvent::LifecycleBaselineAccepted(_)
             | ClientProtocolEvent::WarpRelocationAccepted(_)

@@ -749,6 +749,37 @@ fn damage_prize_notification_is_new(
         != (Some(life_seq), Some(damage_seq), Some(prize_id))
 }
 
+/// What a player is told when the server warns that their connection is
+/// hurting their play (`0x86`), one notification line each: notifications are
+/// single lines, so each stays short enough for a narrow window.
+pub(in crate::game) fn connection_quality_warning_lines(
+    warning: crate::protocol::ConnectionQualityWarning,
+) -> Vec<String> {
+    use crate::protocol::ConnectionQualityWarningReason;
+    const MAY_SPECTATE: &str = "If it doesn't improve, you may be moved to spectator.";
+    let ping = if warning.rtt_ms > 0 {
+        format!(" ({} ms ping)", warning.rtt_ms)
+    } else {
+        String::new()
+    };
+    match warning.reason {
+        ConnectionQualityWarningReason::ShotsRefused => vec![format!(
+            "Your shots aren't counting because your connection is too slow{ping}."
+        )],
+        ConnectionQualityWarningReason::HighLatency => vec![
+            format!("Your connection is very slow{ping}: shots and hits may not count."),
+            MAY_SPECTATE.to_owned(),
+        ],
+        ConnectionQualityWarningReason::PacketLoss => vec![
+            format!(
+                "Your connection is unstable ({}% of packets lost).",
+                (warning.loss_per_mille + 5) / 10
+            ),
+            MAY_SPECTATE.to_owned(),
+        ],
+    }
+}
+
 fn newer_same_life_boundary_requires_correction_cancellation(
     unpublished_boundary_position: bool,
     pending_warp_relocation_collectible_id: Option<u32>,
@@ -757,6 +788,24 @@ fn newer_same_life_boundary_requires_correction_cancellation(
     unpublished_boundary_position
         || pending_warp_relocation_collectible_id.is_some()
         || pending_repel_application.is_some()
+}
+
+/// A Warp marker cancels an older correction because its exact report may
+/// still be in flight. A same-life correction detected at or after the first
+/// published report shows the server received positions from that point on
+/// without admitting the Warp.
+fn warp_report_overtaken_by_correction(
+    warp_report_published: bool,
+    warp_life_seq: Option<u32>,
+    published_sequences: &std::collections::VecDeque<u16>,
+    correction_life_seq: u32,
+    correction_sequence: u16,
+) -> bool {
+    warp_report_published
+        && warp_life_seq == Some(correction_life_seq)
+        && published_sequences
+            .front()
+            .is_some_and(|&first| correction_sequence.wrapping_sub(first) < (1 << 15))
 }
 
 fn apply_frequency_baseline_rebase(
@@ -2563,6 +2612,17 @@ impl Game {
                         );
                     }
                 }
+                ClientProtocolEvent::ConnectionQualityWarning(warning) => {
+                    let scope = self.client_authority.view().scope;
+                    if scope.server_session_id == Some(warning.server_session_id)
+                        && scope.arena_stream_id == Some(warning.arena_stream_id)
+                        && !self.spectator_mode
+                    {
+                        for line in connection_quality_warning_lines(*warning) {
+                            self.push_notification(&line, ORANGE);
+                        }
+                    }
+                }
                 ClientProtocolEvent::SpawnIdleSpectator(fact) => {
                     if self.client_authority.observe_spawn_idle_spectator(*fact)
                         != ClientAuthorityDisposition::Replacement
@@ -2977,6 +3037,23 @@ impl Game {
                                         || marker.delivery_generation != generation
                                 })
                     });
+                    if warp_report_overtaken_by_correction(
+                        self.pending_warp_relocation_collectible_id.is_some()
+                            && !self.pending_warp_relocation_staged,
+                        self.pending_warp_relocation_life_seq,
+                        &self.pending_warp_relocation_sequences,
+                        correction.life_seq,
+                        correction.position_sequence,
+                    ) {
+                        // The server has seen this Warp's report and still
+                        // proposes a correction, so it cannot admit it.
+                        // Cancelling for it would only reopen the barrier
+                        // with the next generation, forever. Give up the
+                        // relocation and take the server's lineage.
+                        self.pending_warp_relocation_collectible_id = None;
+                        self.pending_warp_relocation_life_seq = None;
+                        self.pending_warp_relocation_sequences.clear();
+                    }
                     let newer_boundary_pending =
                         newer_same_life_boundary_requires_correction_cancellation(
                             self.pending_same_life_movement_boundary_position,

@@ -263,12 +263,14 @@ pub(crate) fn normalized_login_name(name: &str) -> Option<String> {
     let name = name.trim_matches(player_name_edge_whitespace);
     (!name.is_empty()
         && name.len() <= MAX_PLAYER_NAME_LEN
-        && name.chars().all(valid_login_name_char))
+        && name
+            .split(' ')
+            .all(|part| !part.is_empty() && part.chars().all(valid_login_name_char)))
     .then(|| name.to_owned())
 }
 
 fn valid_login_name_char(ch: char) -> bool {
-    ch.is_ascii_alphanumeric() || matches!(ch, '!' | '*')
+    ch.is_ascii_alphanumeric() || matches!(ch, '!' | '*' | '-' | '_')
 }
 
 fn player_name_edge_whitespace(ch: char) -> bool {

@@ -138,7 +138,9 @@ players in id order.
 
 ### Chat
 
-Chat lines are at most 96 characters. Up/Down recall the last 16 lines you
+Chat messages support up to 256 characters, with up to three wrapped draft
+lines visible while typing. Backspace and Delete both erase the previous
+character in chat, including native key repeat. Up/Down recall the last 16 lines you
 sent; Tab completes a name after `/p`.
 
 | Input | Effect |

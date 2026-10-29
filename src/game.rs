@@ -5,6 +5,7 @@ mod audio;
 mod events;
 use events::AppliedCollectibleAckHistory;
 mod flags;
+mod frame_rate;
 #[cfg(test)]
 mod lifecycle_reference_model;
 mod lifecycle_sequencer;
@@ -630,6 +631,10 @@ pub(crate) struct Game {
     repel_movement_sequence_window: Option<(u16, u16)>,
     pending_warp_relocation_life_seq: Option<u32>,
     pending_warp_relocation_sequences: std::collections::VecDeque<u16>,
+    /// The ACKed Warp has not moved the ship yet. It relocates on the next
+    /// emitted position, which is then exactly the spawn report the server
+    /// requires; meaningful only while the collectible id above is set.
+    pending_warp_relocation_staged: bool,
     /// Last `PlayerInput` constructed by `update_ship`. Phase 1b sends
     /// this to the server as an observation packet (parallel to the
     /// position relay). Phase 1c will use the same record for client
@@ -746,6 +751,7 @@ pub(crate) struct Game {
     #[cfg(any(test, target_arch = "wasm32"))]
     quality_return_recovery: Option<quality_return::QualityReturnRecovery>,
     menu_visible: bool,
+    frame_rate: frame_rate::FrameRate,
     main_menu_requested: bool,
     scoreboard_visible: bool,
     scoreboard_scroll: player::player_list::PlayerListScroll,

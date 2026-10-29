@@ -953,3 +953,21 @@ fn held_repel_wall_expiry_is_wrap_safe_and_never_rearms_a_retired_window() {
     game.expire_pending_repel_application_at_tick(4);
     assert_eq!(game.repel_movement_sequence_window, None);
 }
+
+#[test]
+fn mouse_weapons_work_with_afterburner_and_remain_in_respawn_latch() {
+    let input = RenderInputContext::from_mouse([MouseButton::Left, MouseButton::Right], []);
+    for shift in [false, true] {
+        assert!(held_primary_fire_down(
+            shift,
+            false,
+            shift_free_fire_down(&input)
+        ));
+        assert!(bomb_input_down(shift, &input));
+        assert!(!mine_input_down(shift, &input));
+        let bits = held_respawn_action_bits(shift, false, &input);
+        assert_ne!(bits & (1 << 13), 0);
+        assert_ne!(bits & (1 << 15), 0);
+        assert_eq!(bits & (1 << 14), 0, "mouse never requests Repel");
+    }
+}

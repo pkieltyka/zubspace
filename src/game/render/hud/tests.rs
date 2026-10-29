@@ -74,3 +74,16 @@ fn notification_stack_shifts_inside_narrow_viewports() {
         640.0
     ));
 }
+
+#[test]
+fn chat_wrap_handles_long_unicode_words_without_splitting_utf8() {
+    let text = "é🚀".repeat(80);
+    let rows = wrap_hud_text(&text, 17);
+    assert!(rows.len() > 3);
+    assert!(rows.iter().all(|line| line.chars().count() <= 17));
+    assert_eq!(rows.join(""), text);
+    let text = "message ".repeat(32);
+    let rows = wrap_hud_text(text.trim(), 100);
+    assert_eq!(rows.len(), 3);
+    assert_eq!(rows.join(" "), text.trim());
+}

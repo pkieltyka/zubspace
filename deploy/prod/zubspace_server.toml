@@ -27,8 +27,14 @@ log_level = "info"
 # (observability), projectile spawns and snap-back replay detail (positions),
 # deaths with killer and weapon (damage), prize claims, and probe audits
 # (connection_quality). It drops the per-acknowledgement lines and the
-# per-packet connection DEBUG; dev logs everything at DEBUG.
-log_filter = "zubspace_server::observability=debug,zubspace_server::arena::positions=debug,zubspace_server::server_damage=debug,zubspace_server::player_events::prizes=debug,zubspace_server::connection_quality=debug,zubspace_server::reliable::acks=warn,zubspace_server::rtc::acks=warn"
+# per-packet connection DEBUG; dev logs everything at DEBUG. The ICE, DTLS
+# and SCTP libraries and the DTLS handler log only errors: their warnings
+# repeat on every ordinary connection (about a dozen each), and the server's
+# own lines already record connects, disconnects and failed handshakes. The
+# ICE agent_proto module's only errors are failed lookups of a browser's
+# private `<uuid>.local` address, which a public server can never resolve (the
+# browser connects from its public address anyway), so that module is off.
+log_filter = "zubspace_server::observability=debug,zubspace_server::arena::positions=debug,zubspace_server::server_damage=debug,zubspace_server::player_events::prizes=debug,zubspace_server::connection_quality=debug,zubspace_server::reliable::acks=warn,zubspace_server::rtc::acks=warn,rtc_ice=error,rtc_ice::agent::agent_proto=off,rtc_dtls=error,rtc_sctp=error,rtc::peer_connection::handler=error"
 log_format = "json"
 # stdout, which the journald log driver stores under the host's journal cap.
 log_file = ""

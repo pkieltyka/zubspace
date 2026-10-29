@@ -35,8 +35,8 @@ fn invalid_name_admission_is_atomic_and_normalized_names_cannot_evade_duplicates
     let (tx, _rx) = mpsc::channel();
     let beta = register_connection(&state, tx);
     for name in [
-        "bad name",
-        "bad_name",
+        "bad  name",
+        "bad\tname",
         "x$y",
         "x.y",
         "x(y)",
@@ -81,7 +81,10 @@ fn server_extracts_continuum_login_name() {
         Some("123456789012".to_string())
     );
     assert_eq!(normalized_login_name("pilot"), Some("pilot".to_string()));
-    assert_eq!(normalized_login_name("bad_name"), None);
+    assert_eq!(
+        normalized_login_name("valid_name"),
+        Some("valid_name".into())
+    );
 }
 
 #[test]
@@ -1114,5 +1117,41 @@ fn bot_ship_types_accept_menu_numbers_and_reject_invalid_or_duplicate_entries() 
             ["zubspace_server", "--bot-ship-types", "1,9"].map(str::to_string)
         )
         .is_err()
+    );
+}
+
+#[test]
+fn spaced_names_are_admitted_and_case_insensitive_duplicates_still_rejected() {
+    use crate::identity::{LoginAdmissionError, admit_player_login};
+    let state = Arc::new(Mutex::new(ServerState::default()));
+    let mut receivers = Vec::new();
+    for (i, name) in ["mr rogers", "h e l l o", "mr-rogers_"]
+        .into_iter()
+        .enumerate()
+    {
+        let (tx, rx) = mpsc::channel();
+        receivers.push(rx);
+        let player = register_connection(&state, tx);
+        assert_eq!(
+            admit_player_login(
+                &state,
+                player,
+                format!("{:012}", 123456789000_u64 + i as u64),
+                name.into()
+            ),
+            Ok(())
+        );
+        assert_eq!(state.lock().unwrap().clients[&player].player.name, name);
+    }
+    let (tx, _rx) = mpsc::channel();
+    let duplicate = register_connection(&state, tx);
+    assert_eq!(
+        admit_player_login(
+            &state,
+            duplicate,
+            "123456789099".into(),
+            "  MR ROGERS  ".into()
+        ),
+        Err(LoginAdmissionError::NameInUse)
     );
 }

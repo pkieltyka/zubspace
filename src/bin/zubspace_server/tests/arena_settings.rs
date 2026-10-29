@@ -317,18 +317,12 @@ fn server_chaos_ship_settings_cover_movement_energy_bounty_and_weapons_per_ship(
         assert_eq!(settings[offset + 110], 3);
         assert_eq!(settings[offset + 111], 3);
         assert_eq!(settings[offset + 112], 3);
-        assert_eq!(
-            settings[offset + 113],
-            if ship_index == 6 { 100 } else { 3 }
-        );
+        assert_eq!(settings[offset + 113], 3);
         assert_eq!(settings[offset + 114], 3);
         assert_eq!(settings[offset + 115], 3);
         assert_eq!(settings[offset + 116], 0);
         assert_eq!(settings[offset + 117], 0);
-        assert_eq!(
-            settings[offset + 118],
-            if ship_index == 6 { 100 } else { 0 }
-        );
+        assert_eq!(settings[offset + 118], 0);
         assert_eq!(settings[offset + 119], 0);
         assert_eq!(settings[offset + 120], 0);
         assert_eq!(settings[offset + 121], 0);

@@ -34,7 +34,8 @@
       return name.slice(start, end);
     },
     valid(value) {
-      return typeof value === "string" && value.length > 0 && value.length <= 14 && !/[^A-Za-z0-9!*]/.test(value);
+      return typeof value === "string" && value.length > 0 && value.length <= 14 &&
+        !/[^A-Za-z0-9!*_ -]/.test(value) && value.split(" ").every(part => part.length > 0);
     },
   };
   global.zubspacePlayerName = playerName;
@@ -43,10 +44,11 @@
     2: "Sorry, the arena is full at this time.",
     3: "Unable to connect. Please try again.",
     4: "Your previous session is still connected. Close the other game and try again.",
-    5: "Use 1–14 letters, numbers, ! or * for your player name.",
+    5: "Use 1–14 letters, numbers, !, *, - or _, with single spaces between words.",
+    6: "Couldn't open the game connection. Your network may be blocking the UDP traffic the game needs (common on work, school and some public Wi-Fi). Try another network.",
   };
   global.zubspaceMenuAdmission = {
-    message(code) { return [1, 2, 3, 4, 5].includes(code) ? admissionMessages[code] : null; },
+    message(code) { return [1, 2, 3, 4, 5, 6].includes(code) ? admissionMessages[code] : null; },
     recoverStoredIdentity(rejection, stored, name, playerId) {
       // The roster is only an advisory. Let the server decide whether this
       // stored identity is waiting for its own stale session or another user.

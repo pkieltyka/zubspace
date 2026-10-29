@@ -84,7 +84,9 @@ impl Game {
             ),
             repel_application,
             input_history: Some(input_history),
-            warp_collectible_id: self.pending_warp_relocation_collectible_id,
+            warp_collectible_id: self
+                .pending_warp_relocation_collectible_id
+                .filter(|_| !self.pending_warp_relocation_staged),
         }
     }
 
@@ -308,7 +310,8 @@ impl Game {
         self.pending_weapon = 0;
         self.cancel_pending_weapon_prediction();
         self.ship.flash = false;
-        self.pending_same_life_movement_boundary_position = false;
+        self.pending_same_life_movement_boundary_position =
+            self.staged_warp_relocation_forces_next_report();
 
         let action_id = self.next_portal_placement_action_id.max(1);
         let request = PortalWarpRequest {

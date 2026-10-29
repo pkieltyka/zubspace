@@ -1732,8 +1732,8 @@ fn server_rejects_duplicate_player_identity_and_invalid_names() {
     alpha.disconnect(&state);
     beta.disconnect(&state);
 
-    assert_eq!(normalized_login_name("bad_name"), None);
-    for name in ["bad_name", "bad name", "x.y", "x$y", "x(y)", ""] {
+    assert_eq!(normalized_login_name("bad  name"), None);
+    for name in ["bad\tname", "bad  name", "x.y", "x$y", "x(y)", ""] {
         let mut invalid = connect_and_login(&state, name, 987_654_321_098);
         let rejection = invalid.read_reliable_payload();
         assert_eq!(rejection[0], LOGIN_FAILURE_MESSAGE);

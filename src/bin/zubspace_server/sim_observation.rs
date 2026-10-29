@@ -320,13 +320,23 @@ pub(crate) fn validate_position_input_witness_with_additions(
             crate::continuum::continuum_tick_add(anchor_tick, offset)
         })
         .collect::<Vec<_>>();
-    let history_matches = |upgrades: PlayerMovementUpgrades| {
-        let tuning = movement_tuning_from_ship(sender.player.ship, upgrades);
+    let history_matches = |upgrades: PlayerMovementUpgrades,
+                           earlier: Option<EarlierMovementTuning>| {
+        let current_tuning = movement_tuning_from_ship(sender.player.ship, upgrades);
+        let earlier_tuning = earlier.map(|earlier| {
+            (
+                earlier,
+                movement_tuning_from_ship(sender.player.ship, earlier.upgrades),
+            )
+        });
         let rotation_steps = step_ticks
             .iter()
             .enumerate()
             .map(|(index, &step_tick)| {
                 let sequence = previous_sequence.wrapping_add(index as u16 + 1);
+                let tuning = earlier_tuning
+                    .filter(|(earlier, _)| earlier.covers(sequence))
+                    .map_or(current_tuning, |(_, earlier_tuning)| earlier_tuning);
                 let engine_shutdown =
                     sender.server_engine_shutdown_active_for_sequence(step_tick, sequence);
                 input_rotation_step(
@@ -347,15 +357,44 @@ pub(crate) fn validate_position_input_witness_with_additions(
         )
     };
     // Input generated before the browser learned of a damage prize change
-    // turns at the replaced rate (`DamageMovementGrace`).
-    if !history_matches(movement_upgrades_for_client(sender))
-        && !sender
-            .damage_movement_grace_tuning(current_sequence)
-            .is_some_and(|tuning| history_matches(movement_upgrades_from_tuning(tuning)))
-    {
+    // turns at the replaced rate (`DamageMovementGrace`), up to the frame the
+    // change reached it.
+    let current = movement_upgrades_for_client(sender);
+    let matches = history_matches(current, None)
+        || damage_movement_grace_switch_points(sender, previous_sequence, current_sequence)
+            .into_iter()
+            .any(|earlier| history_matches(current, Some(earlier)));
+    if !matches {
         return Err(PositionInputWitnessError::InvalidDirectionHistory);
     }
     Ok(exact)
+}
+
+/// Every way the gap after `previous_sequence` may have run at the tuning a
+/// damage prize change replaced: all of it, then each later switch to the
+/// current tuning, last switch first. Empty outside the grace window. A gap of
+/// at most `MAX_OBSERVED_POSITION_SEQUENCE_STEPS` bounds the candidates.
+pub(crate) fn damage_movement_grace_switch_points(
+    sender: &ClientHandle,
+    previous_sequence: u16,
+    current_sequence: u16,
+) -> Vec<EarlierMovementTuning> {
+    let steps = current_sequence.wrapping_sub(previous_sequence);
+    if steps == 0 || steps > MAX_OBSERVED_POSITION_SEQUENCE_STEPS {
+        return Vec::new();
+    }
+    (1..=steps)
+        .rev()
+        .map(|offset| previous_sequence.wrapping_add(offset))
+        .filter_map(|last_sequence| {
+            sender
+                .damage_movement_grace_tuning(last_sequence)
+                .map(|tuning| EarlierMovementTuning {
+                    upgrades: movement_upgrades_from_tuning(tuning),
+                    last_sequence,
+                })
+        })
+        .collect()
 }
 
 fn exact_orientation_history_matches(
@@ -923,6 +962,110 @@ pub(crate) fn replay_canonical_position_gap_from_witness_with_repel_window(
     repel_application: Option<CanonicalRepelApplication>,
     repel_sequence_window: Option<(u16, u16)>,
 ) -> Option<CanonicalPositionReplay> {
+    replay_gap_from_witness(
+        sender,
+        previous_witness,
+        anchor_tick,
+        map,
+        is_flagger,
+        has_attached_riders,
+        is_repel_active,
+        upgrades,
+        None,
+        enemy_brick_tiles,
+        current_sequence,
+        accepted_server_tick,
+        spawn_x,
+        spawn_y,
+        tail_bomb_recoil_speed,
+        repel_application,
+        repel_sequence_window,
+    )
+}
+
+/// The browser learned of a damage prize change part-way through a replayed
+/// gap (`DamageMovementGrace`): its inputs up to and including
+/// `last_sequence` were simulated with `upgrades`, the replaced tuning, and
+/// the rest with the current tuning. It switches exactly once, at the frame
+/// the private prize state reached it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct EarlierMovementTuning {
+    pub(crate) upgrades: PlayerMovementUpgrades,
+    pub(crate) last_sequence: u16,
+}
+
+impl EarlierMovementTuning {
+    /// Wrap-safe `sequence <= last_sequence`.
+    fn covers(self, sequence: u16) -> bool {
+        self.last_sequence.wrapping_sub(sequence) < (1 << 15)
+    }
+}
+
+/// `replay_canonical_position_gap_with_repel_application` where the first
+/// inputs of the gap ran at an earlier tuning (see `EarlierMovementTuning`).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn replay_canonical_position_gap_with_earlier_tuning(
+    sender: &ClientHandle,
+    map: &ZoneMap,
+    is_flagger: bool,
+    has_attached_riders: bool,
+    is_repel_active: bool,
+    upgrades: PlayerMovementUpgrades,
+    earlier: EarlierMovementTuning,
+    enemy_brick_tiles: &[(usize, usize)],
+    current_sequence: u16,
+    accepted_server_tick: u32,
+    spawn_x: u16,
+    spawn_y: u16,
+    tail_bomb_recoil_speed: Option<f32>,
+    repel_application: Option<CanonicalRepelApplication>,
+) -> Option<CanonicalPositionReplay> {
+    let previous_sequence = sender.last_position_sequence?;
+    let previous_witness = sender.canonical_movement_witness.filter(|witness| {
+        witness.sequence == previous_sequence && witness.life_seq == sender.life_seq
+    })?;
+    let anchor_tick = sender.last_position_server_tick?;
+    replay_gap_from_witness(
+        sender,
+        previous_witness,
+        anchor_tick,
+        map,
+        is_flagger,
+        has_attached_riders,
+        is_repel_active,
+        upgrades,
+        Some(earlier),
+        enemy_brick_tiles,
+        current_sequence,
+        accepted_server_tick,
+        spawn_x,
+        spawn_y,
+        tail_bomb_recoil_speed,
+        repel_application,
+        sender.server_repel_sequence_window,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn replay_gap_from_witness(
+    sender: &ClientHandle,
+    previous_witness: CanonicalPositionWitness,
+    anchor_tick: u32,
+    map: &ZoneMap,
+    is_flagger: bool,
+    has_attached_riders: bool,
+    is_repel_active: bool,
+    upgrades: PlayerMovementUpgrades,
+    earlier: Option<EarlierMovementTuning>,
+    enemy_brick_tiles: &[(usize, usize)],
+    current_sequence: u16,
+    accepted_server_tick: u32,
+    spawn_x: u16,
+    spawn_y: u16,
+    tail_bomb_recoil_speed: Option<f32>,
+    repel_application: Option<CanonicalRepelApplication>,
+    repel_sequence_window: Option<(u16, u16)>,
+) -> Option<CanonicalPositionReplay> {
     if previous_witness.life_seq != sender.life_seq {
         return None;
     }
@@ -955,6 +1098,12 @@ pub(crate) fn replay_canonical_position_gap_from_witness_with_repel_window(
         })
         .collect::<Vec<_>>();
     let tuning = movement_tuning_from_ship(sender.player.ship, upgrades);
+    let earlier_tuning = earlier.map(|earlier| {
+        (
+            earlier,
+            movement_tuning_from_ship(sender.player.ship, earlier.upgrades),
+        )
+    });
     let radius = arena_ship_radius_pixels(sender.player.ship);
     let bounce_factor = arena_bounce_factor();
     // Current-protocol reports carry the prior exact raw f32 orientation and
@@ -1102,12 +1251,15 @@ pub(crate) fn replay_canonical_position_gap_from_witness_with_repel_window(
             ) || applied_repel_sequence_window
                 .is_some_and(|window| repel_sequence_window_contains(window, record.sequence));
             let step_seed = [effective_door_seed];
+            let step_tuning = earlier_tuning
+                .filter(|(earlier, _)| earlier.covers(record.sequence))
+                .map_or(tuning, |(_, earlier_tuning)| earlier_tuning);
             let stepped = integrate_with_collision(
                 state,
                 position_x,
                 position_y,
                 decode_input_bits(record.input.bits),
-                tuning,
+                step_tuning,
                 PlayerMovementEnvironment {
                     engine_shutdown,
                     emp_shutdown,

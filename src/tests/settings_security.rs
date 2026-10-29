@@ -677,7 +677,8 @@ fn chaos_zone_asset_settings_parse_to_expected_local_tuning() {
     assert!(weasel.see_mines);
     assert_eq!(weasel.shrapnel_max, 0);
     assert_eq!(lancaster.bomb_bounces, 1);
-    assert_eq!(lancaster.max_bricks, 100);
+    assert_eq!(lancaster.max_bricks, 3);
+    assert_eq!(lancaster.initial_bricks, 0);
     assert!(shark.initial_cloak);
     assert!(shark.cloak_available);
     assert_eq!(

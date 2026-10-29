@@ -305,9 +305,12 @@ reliable `0x7b`. The reasons are:
 - an unacknowledged Repel.
 
 The client pauses and answers `0x63`, applying the correction or cancelling it
-if a newer boundary such as a Warp came first. The server replays to the
-client's application point, commits, and answers `0x7c`. Only then does the
-client install the state.
+if a newer boundary such as a Warp came first. A Warp the server has already
+had a chance to admit does not count: if the correction was detected at or
+after the first position carrying the Warp marker, the client drops the marker
+and applies the correction, rather than cancelling every later generation as
+well. The server replays to the client's application point, commits, and
+answers `0x7c`. Only then does the client install the state.
 
 As a backstop, `sim_observation.rs` runs a second, private simulation of each
 ship. Error beyond the half-pixel wire rounding accumulates per axis, leaking by
@@ -661,7 +664,11 @@ server at once, while the victim's browser keeps its previous values until the
 private `PrizeState` reaches it. For input up to one measured round trip plus
 200 ms past the last input the server had received (at most one second of
 input, same life), a movement replay or turn history that fails at the new
-values is retried once at the replaced values (`DamageMovementGrace`).
+values is retried at the replaced values (`DamageMovementGrace`). The browser
+switches once, on the frame the change reaches it, so a replayed gap can run
+at the replaced values up to that frame and at the new values after it: the
+server tries the whole gap at the replaced values, then each later switch
+point inside the window.
 
 How the main effects apply:
 
@@ -725,8 +732,11 @@ the server's own position and heading.
 - A ship trapped by a new enemy brick is moved by a correction.
 
 **Positive Warp prize.** A claim authorises one relocation; up to 64 can be
-outstanding. The client relocates and marks its positions with `0x76` until the
-server's `0x77`. Ordinary positions cannot use an authorisation.
+outstanding. The client relocates on the first position it sends after the ACK,
+so that report is exactly the spawn with zero velocity, and marks its positions
+with `0x76` until the server's `0x77`. A report that carries a weapon or Repel
+marker cannot be the relocation, so the Warp waits for the next one. Ordinary
+positions cannot use an authorisation.
 
 **Portal placement** (Shift+Insert, `0x65`) names the client's last position.
 The server waits up to 12 ticks for that position, then checks life,

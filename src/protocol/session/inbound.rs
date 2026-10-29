@@ -121,6 +121,11 @@ impl ClientProtocolSession {
                     .events
                     .push(ClientProtocolEvent::ConnectionQualityDirective(fact));
             }
+            ServerPacket::ConnectionQualityWarning(warning) => {
+                actions
+                    .events
+                    .push(ClientProtocolEvent::ConnectionQualityWarning(warning));
+            }
             ServerPacket::ConnectionQualityProbe(probe) => {
                 if self.latest_server_clock_bootstrap.is_some_and(|scope| {
                     scope.server_session_id == probe.server_session_id

@@ -979,7 +979,9 @@ fn held_primary_fire_down(shift_down: bool, ctrl_down: bool, shift_free_down: bo
 }
 
 fn shift_free_fire_down(render_input: &RenderInputContext) -> bool {
-    render_input.is_down(KeyCode::Comma) || render_input.is_down(KeyCode::X)
+    render_input.is_down(KeyCode::Comma)
+        || render_input.is_down(KeyCode::X)
+        || render_input.mouse_is_down(MouseButton::Left)
 }
 
 /// Tab, Z and `.` bomb, or lay a mine while Shift is held.
@@ -990,7 +992,7 @@ fn bomb_key_down(render_input: &RenderInputContext) -> bool {
 }
 
 fn bomb_input_down(shift_down: bool, render_input: &RenderInputContext) -> bool {
-    !shift_down && bomb_key_down(render_input)
+    (!shift_down && bomb_key_down(render_input)) || render_input.mouse_is_down(MouseButton::Right)
 }
 
 fn mine_input_down(shift_down: bool, render_input: &RenderInputContext) -> bool {
@@ -1029,6 +1031,9 @@ fn held_respawn_action_bits(
     }
     if shift_down && ctrl_down {
         bits |= 1 << 14;
+    }
+    if render_input.mouse_is_down(MouseButton::Right) {
+        bits |= 1 << 15;
     }
     bits
 }

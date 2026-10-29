@@ -131,6 +131,7 @@ impl FrameInputEvents {
 #[derive(Default)]
 struct KeyPressModifiers {
     by_key: HashMap<KeyCode, InputModifiers>,
+    edit_presses: Vec<KeyCode>,
 }
 
 impl macroquad::miniquad::EventHandler for KeyPressModifiers {
@@ -143,6 +144,11 @@ impl macroquad::miniquad::EventHandler for KeyPressModifiers {
         modifiers: macroquad::miniquad::KeyMods,
         repeat: bool,
     ) {
+        if matches!(key, KeyCode::Backspace | KeyCode::Delete)
+            && self.edit_presses.len() < MAX_PENDING_SEMANTIC_ACTIONS
+        {
+            self.edit_presses.push(key);
+        }
         if !repeat {
             // Macroquad exposes one pressed edge per key per frame. Retain
             // that first edge's modifiers, never a later repeat/chord's state.
@@ -162,6 +168,7 @@ impl macroquad::miniquad::EventHandler for KeyPressModifiers {
 #[derive(Clone, Debug, Default)]
 pub(crate) struct RenderInputContext {
     down: HashSet<KeyCode>,
+    mouse_down: HashSet<MouseButton>,
     pending_actions: VecDeque<SemanticInputAction>,
     // A gameplay key pressed while authoritative simulation is temporarily
     // closed (death/lifecycle/correction) is still a fresh human edge. Keep
@@ -172,10 +179,109 @@ pub(crate) struct RenderInputContext {
 }
 
 impl RenderInputContext {
-    pub(crate) fn capture_frame(&mut self, events: &mut FrameInputEvents) {
+    pub(crate) fn capture_frame(&mut self, events: &mut FrameInputEvents, chat_active: bool) {
+        let frame_action_start = self.pending_actions.len();
         self.down = get_keys_down();
         let modifiers = events.take_press_modifiers();
-        self.capture_pressed_keys(get_keys_pressed(), &modifiers.by_key);
+        self.capture_chat_frame_keys(get_keys_pressed(), &modifiers, chat_active);
+        self.capture_mouse_buttons(
+            [MouseButton::Left, MouseButton::Right]
+                .into_iter()
+                .filter(|&button| is_mouse_button_down(button)),
+            [MouseButton::Left, MouseButton::Right]
+                .into_iter()
+                .filter(|&button| is_mouse_button_pressed(button)),
+            frame_action_start,
+        );
+    }
+
+    fn capture_chat_frame_keys(
+        &mut self,
+        mut pressed: HashSet<KeyCode>,
+        events: &KeyPressModifiers,
+        chat_active: bool,
+    ) {
+        let mut fallback_edits = 0;
+        if chat_active {
+            fallback_edits += usize::from(pressed.remove(&KeyCode::Backspace));
+            fallback_edits += usize::from(pressed.remove(&KeyCode::Delete));
+        }
+        self.capture_pressed_keys(pressed, &events.by_key);
+        if chat_active {
+            // Consume real repeats only in the chat layer; Delete must never
+            // become multifire/Burst while editing. Fallback covers the first
+            // subscription frame when only Macroquad's pressed set is known.
+            let count = if events.edit_presses.is_empty() {
+                fallback_edits
+            } else {
+                events.edit_presses.len()
+            };
+            for _ in 0..count {
+                if self.pending_actions.len() >= MAX_PENDING_SEMANTIC_ACTIONS {
+                    self.dropped_actions = self.dropped_actions.saturating_add(1);
+                    break;
+                }
+                self.pending_actions.push_back(SemanticInputAction {
+                    kind: SemanticInputActionKind::ChatBackspace,
+                    modifiers: InputModifiers::default(),
+                });
+            }
+        }
+    }
+
+    pub(crate) fn mouse_is_down(&self, button: MouseButton) -> bool {
+        self.mouse_down.contains(&button)
+    }
+
+    fn capture_mouse_buttons(
+        &mut self,
+        down: impl IntoIterator<Item = MouseButton>,
+        pressed: impl IntoIterator<Item = MouseButton>,
+        frame_action_start: usize,
+    ) {
+        self.mouse_down = down.into_iter().collect();
+        for button in pressed {
+            let kind = match button {
+                MouseButton::Left => SemanticInputActionKind::PrimaryFireOrSpectate,
+                MouseButton::Right => SemanticInputActionKind::BombOrSpectate,
+                _ => continue,
+            };
+            self.pending_gameplay_key_press = true;
+            // Keyboard and mouse aliases pressed in the same frame are one
+            // intent. Earlier zero-step frames retain their separate taps.
+            if self
+                .pending_actions
+                .iter()
+                .skip(frame_action_start)
+                .any(|action| {
+                    action.kind == kind
+                        || (kind == SemanticInputActionKind::BombOrSpectate
+                            && action.kind == SemanticInputActionKind::ChatAutocompleteOrBomb)
+                })
+            {
+                continue;
+            }
+            if self.pending_actions.len() >= MAX_PENDING_SEMANTIC_ACTIONS {
+                self.dropped_actions = self.dropped_actions.saturating_add(1);
+                continue;
+            }
+            // Mouse weapons remain bullets/bombs while afterburning. They
+            // never inherit Shift+Control Repel or Shift+Tab Mine semantics.
+            self.pending_actions.push_back(SemanticInputAction {
+                kind,
+                modifiers: InputModifiers::default(),
+            });
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_mouse(
+        down: impl IntoIterator<Item = MouseButton>,
+        pressed: impl IntoIterator<Item = MouseButton>,
+    ) -> Self {
+        let mut context = Self::default();
+        context.capture_mouse_buttons(down, pressed, 0);
+        context
     }
 
     /// Retire anything not drained by the first logical step. In normal game
@@ -1018,5 +1124,109 @@ mod tests {
         input.merge_keys([KeyCode::F4], [KeyCode::F4]);
         input.clear_pending_actions();
         assert!(input.pending_actions().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod mouse_tests {
+    use super::*;
+
+    #[test]
+    fn mouse_taps_survive_zero_step_frames_and_request_weapon_receipts() {
+        let mut input = RenderInputContext::from_mouse([], [MouseButton::Left, MouseButton::Right]);
+        assert!(input.has_pending_weapon_submission_action());
+        assert!(input.take_gameplay_key_press());
+        let next_frame = input.pending_actions.len();
+        input.capture_mouse_buttons([], [], next_frame);
+        assert_eq!(
+            input
+                .drain_actions()
+                .iter()
+                .map(|a| a.kind)
+                .collect::<Vec<_>>(),
+            [
+                SemanticInputActionKind::PrimaryFireOrSpectate,
+                SemanticInputActionKind::BombOrSpectate
+            ]
+        );
+        assert!(!input.mouse_is_down(MouseButton::Left));
+        assert!(input.drain_actions().is_empty());
+    }
+
+    #[test]
+    fn mouse_aliases_coalesce_with_keyboard_only_within_the_same_frame() {
+        let mut input = RenderInputContext::from_keys([], [KeyCode::Comma, KeyCode::Tab]);
+        input.capture_mouse_buttons([], [MouseButton::Left, MouseButton::Right], 0);
+        assert_eq!(input.pending_actions.len(), 2);
+        let next_frame = input.pending_actions.len();
+        input.capture_mouse_buttons([], [MouseButton::Left], next_frame);
+        assert_eq!(
+            input.pending_actions.len(),
+            3,
+            "another frame's tap remains distinct"
+        );
+    }
+
+    #[test]
+    fn mouse_queue_is_bounded_and_release_clears_held_state() {
+        let mut input = RenderInputContext::default();
+        for _ in 0..MAX_PENDING_SEMANTIC_ACTIONS + 1 {
+            let start = input.pending_actions.len();
+            input.capture_mouse_buttons([MouseButton::Left], [MouseButton::Left], start);
+        }
+        assert_eq!(input.pending_actions.len(), MAX_PENDING_SEMANTIC_ACTIONS);
+        assert_eq!(input.dropped_actions(), 1);
+        assert!(input.mouse_is_down(MouseButton::Left));
+        let start = input.pending_actions.len();
+        input.capture_mouse_buttons([], [], start);
+        assert!(!input.mouse_is_down(MouseButton::Left));
+    }
+}
+
+#[cfg(test)]
+mod chat_edit_tests {
+    use super::*;
+    use macroquad::miniquad::{EventHandler, KeyMods};
+
+    #[test]
+    fn chat_accepts_backspace_delete_and_native_key_repeat_without_gameplay_actions() {
+        for key in [KeyCode::Backspace, KeyCode::Delete] {
+            let mut events = KeyPressModifiers::default();
+            events.key_down_event(key, KeyMods::default(), false);
+            events.key_down_event(key, KeyMods::default(), true);
+            events.key_down_event(key, KeyMods::default(), true);
+            let mut input = RenderInputContext::default();
+            input.capture_chat_frame_keys([key].into_iter().collect(), &events, true);
+            let actions = input.drain_actions();
+            assert_eq!(actions.len(), 3);
+            assert!(
+                actions
+                    .iter()
+                    .all(|a| a.kind == SemanticInputActionKind::ChatBackspace)
+            );
+            input.capture_chat_frame_keys(HashSet::new(), &KeyPressModifiers::default(), true);
+            assert!(input.drain_actions().is_empty());
+        }
+        for shift in [false, true] {
+            let mut input = RenderInputContext::default();
+            let mut events = KeyPressModifiers::default();
+            events.key_down_event(
+                KeyCode::Delete,
+                KeyMods {
+                    shift,
+                    ..KeyMods::default()
+                },
+                false,
+            );
+            input.capture_chat_frame_keys([KeyCode::Delete].into_iter().collect(), &events, false);
+            assert_eq!(
+                input.drain_actions()[0].kind,
+                if shift {
+                    SemanticInputActionKind::Burst
+                } else {
+                    SemanticInputActionKind::ToggleMultifire
+                }
+            );
+        }
     }
 }

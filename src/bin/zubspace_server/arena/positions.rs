@@ -1623,15 +1623,42 @@ fn accept_position_relay_with_spawn_deferral(
         };
         let mut canonical_replay = replay_with(movement_upgrades);
         // Input generated before the browser learned of a damage prize change
-        // replays with the replaced tuning (`DamageMovementGrace`).
+        // replays with the replaced tuning (`DamageMovementGrace`), up to the
+        // frame the change reached it: the browser switches once, so a gap may
+        // run old then current. All-old is tried first, then each later switch.
         if !canonical_replay.as_ref().is_some_and(replay_matches)
-            && let Some(tuning) = sender.damage_movement_grace_tuning(client_sequence)
+            && let Some(previous_sequence) = sender.last_position_sequence
         {
-            let grace_upgrades = crate::sim_observation::movement_upgrades_from_tuning(tuning);
-            let grace_replay = replay_with(grace_upgrades);
-            if grace_replay.as_ref().is_some_and(replay_matches) {
-                canonical_replay = grace_replay;
-                movement_upgrades = grace_upgrades;
+            for earlier in crate::sim_observation::damage_movement_grace_switch_points(
+                sender,
+                previous_sequence,
+                client_sequence,
+            ) {
+                let grace_replay =
+                    crate::sim_observation::replay_canonical_position_gap_with_earlier_tuning(
+                        sender,
+                        map,
+                        is_flagger,
+                        attached_riders,
+                        existing_repel_active,
+                        movement_upgrades,
+                        earlier,
+                        &enemy_brick_tiles,
+                        client_sequence,
+                        server_tick_at_accept,
+                        spawn_x,
+                        spawn_y,
+                        tail_bomb_recoil_speed,
+                        repel_application,
+                    );
+                if grace_replay.as_ref().is_some_and(replay_matches) {
+                    canonical_replay = grace_replay;
+                    // Later work continues from the tail's tuning.
+                    if earlier.last_sequence == client_sequence {
+                        movement_upgrades = earlier.upgrades;
+                    }
+                    break;
+                }
             }
         }
         // Safe-zone weapon presses emit no live weapon. Their exact logical
@@ -1912,7 +1939,12 @@ fn accept_position_relay_with_spawn_deferral(
         // its browser position need not repeat the server's current integer
         // energy. The global max-energy check above still rejects impossible
         // values; never make this non-authoritative wire mirror part of the
-        // one-shot relocation proof.
+        // one-shot relocation proof. Bounty is likewise stamped from server
+        // authority on the relay; a kill can raise it between the claim and
+        // the browser's report, so the bounty recorded with the claim also
+        // matches.
+        let warp_claim_bounty = matching_warp_prize_authorization_index
+            .map(|index| sender.pending_warp_prize_relocations[index].expected_bounty);
         let matching_warp_prize_details = snapshot.warp_collectible_id.is_some()
             && snapshot.timestamp == 0
             && snapshot.direction == canonical_direction
@@ -1922,7 +1954,8 @@ fn accept_position_relay_with_spawn_deferral(
             && snapshot.velocity_y == 0
             && snapshot.weapon == 0
             && snapshot.repel_snapshot_id.is_none()
-            && snapshot.bounty == sender.server_bounty
+            && (snapshot.bounty == sender.server_bounty
+                || warp_claim_bounty == Some(snapshot.bounty))
             && reported_status_is_owned
             && reported_exact_x.to_bits() == (spawn_x as f32).to_bits()
             && reported_exact_y.to_bits() == (spawn_y as f32).to_bits()
@@ -4938,6 +4971,7 @@ mod tests {
             maxed_spawn_loadout: false, // This fixture tests the authored base movement model.
             spawn_idle: Default::default(),
             session_summary: Default::default(),
+            quality_warnings: Default::default(),
             session_id: PlayerSessionId::new(1),
             arena_stream_id: 1,
             inputs_received: 0,

@@ -151,6 +151,31 @@ fn prod_keeps_combat_lines_and_drops_acknowledgements_while_dev_keeps_all() {
     }
     assert!(!prod.would_enable("zubspace_server::connection", &tracing::Level::DEBUG));
     assert!(!prod.would_enable("zubspace_server::hidden_prizes", &tracing::Level::DEBUG));
+    // Per-connection transport-library warnings are noise in prod; their
+    // errors, the peer state lines and the server's own warnings stay.
+    for target in [
+        "rtc_ice::agent",
+        "rtc_ice::agent::agent_selector",
+        "rtc_dtls::config",
+        "rtc_dtls::handshaker",
+        "rtc_sctp::endpoint",
+        "rtc::peer_connection::handler",
+    ] {
+        assert!(
+            !prod.would_enable(target, &tracing::Level::WARN),
+            "{target}"
+        );
+        assert!(
+            prod.would_enable(target, &tracing::Level::ERROR),
+            "{target}"
+        );
+        assert!(dev.would_enable(target, &tracing::Level::WARN), "{target}");
+    }
+    assert!(!prod.would_enable("rtc_ice::agent::agent_proto", &tracing::Level::ERROR));
+    assert!(dev.would_enable("rtc_ice::agent::agent_proto", &tracing::Level::ERROR));
+    assert!(prod.would_enable("rtc::peer_connection::internal", &tracing::Level::INFO));
+    assert!(prod.would_enable("webrtc::peer_connection", &tracing::Level::ERROR));
+    assert!(prod.would_enable("zubspace_server::rtc", &tracing::Level::WARN));
 }
 
 #[test]

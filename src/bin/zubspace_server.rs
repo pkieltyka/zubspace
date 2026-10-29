@@ -37,6 +37,8 @@ mod authority_projectiles;
 mod binary_identity;
 #[path = "../bm2.rs"]
 mod bm2;
+#[path = "../chat_limits.rs"]
+mod chat_limits;
 #[path = "../clock_bootstrap.rs"]
 mod clock_bootstrap;
 #[path = "../combat_timeline.rs"]

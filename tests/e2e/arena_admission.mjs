@@ -155,9 +155,9 @@ async function main() {
     const retryUrl = `${base}&menu=1`; urls.push(retryUrl);
     beta = await openChromeClient(browsers[1], retryUrl, { initScript: revealWitness + unavailableStorage, beforeReady: async ({ send, evaluate }) => {
       await formReady(evaluate);
-      for (const name of ['Old Name', 'bad_name', 'x.y', 'ABCDEFGHIJKLMNO']) {
+      for (const name of ['Old  Name', 'bad\tname', 'x.y', 'ABCDEFGHIJKLMNO']) {
         await submit(send, evaluate, name);
-        await formReady(evaluate, 'Use 1–14 letters, numbers, ! or * for your player name.');
+        await formReady(evaluate, 'Use 1–14 letters, numbers, !, *, - or _, with single spaces between words.');
         assert.equal(await evaluate('document.querySelector("#player-name-input").value'), name);
         assert.equal(await evaluate('document.querySelector("#player-name-submit").disabled'), true);
         assert.equal(await evaluate(`performance.getEntriesByType('resource').filter(row => row.name.endsWith('/v1/rtc/offer')).length`), 0);
@@ -165,14 +165,14 @@ async function main() {
       }
       for (const [name, valid] of [
         ['\u200b\t admissionace \u00a0', true],
-        [bot.name, /^[A-Za-z0-9!*]{1,14}$/.test(bot.name)],
+        [bot.name, await evaluate(`window.zubspacePlayerName.valid(${JSON.stringify(bot.name)})`)],
       ]) {
         await submit(send, evaluate, name);
-        // Bot display names deliberately retain the owner's spaces/dots.
-        // Those cannot be entered by a human under the new strict policy;
-        // valid bot-name ownership is additionally covered by native admission.
+        // Bot display names may include spaces (now valid), but some still
+        // contain disallowed dots or exceed fourteen characters. Valid names
+        // must be rejected as owned, while invalid ones stay editable.
         await formReady(evaluate, valid ? 'That username is currently in use. Try another name.'
-          : 'Use 1–14 letters, numbers, ! or * for your player name.');
+          : 'Use 1–14 letters, numbers, !, *, - or _, with single spaces between words.');
         assert.equal((await identity(evaluate)).focused, 'player-name-input');
         assert.equal(await evaluate(`performance.getEntriesByType('resource').filter(row => row.name.endsWith('/v1/rtc/offer')).length`), 0);
         cases.push({ kind: valid ? 'advisory-name-rejection' : 'server-owned-bot-name-disallowed-as-player-input', bot: name === bot.name });

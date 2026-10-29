@@ -203,6 +203,128 @@ impl ConnectionQualityDirective {
     }
 }
 
+/// Server `0x86`, advisory only: tells a player in a ship why play is going
+/// badly for them, before or instead of any forced spectator. It changes no
+/// state and carries no authority.
+///
+/// `type:u8 | version:u8 = 1 | server_session_id:u64 | arena_stream_id:u64 |
+/// reason:u8 | rtt_ms:u16 | loss_per_mille:u16`
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ConnectionQualityWarning {
+    pub(crate) server_session_id: u64,
+    pub(crate) arena_stream_id: u64,
+    pub(crate) reason: ConnectionQualityWarningReason,
+    /// The server's average probe round trip, or 0 before one is measured.
+    pub(crate) rtt_ms: u16,
+    pub(crate) loss_per_mille: u16,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ConnectionQualityWarningReason {
+    /// Shots were refused because the shooter's view of the game was too old.
+    ShotsRefused,
+    HighLatency,
+    PacketLoss,
+}
+
+impl ConnectionQualityWarning {
+    pub(crate) const TYPE: u8 = 0x86;
+    pub(crate) const LEN: usize = 23;
+
+    #[allow(dead_code)] // The browser only parses it.
+    pub(crate) fn encode(self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(Self::LEN);
+        bytes.extend([Self::TYPE, 1]);
+        bytes.extend(self.server_session_id.to_le_bytes());
+        bytes.extend(self.arena_stream_id.to_le_bytes());
+        bytes.push(match self.reason {
+            ConnectionQualityWarningReason::ShotsRefused => 0,
+            ConnectionQualityWarningReason::HighLatency => 1,
+            ConnectionQualityWarningReason::PacketLoss => 2,
+        });
+        bytes.extend(self.rtt_ms.to_le_bytes());
+        bytes.extend(self.loss_per_mille.to_le_bytes());
+        bytes
+    }
+
+    pub(crate) fn parse(bytes: &[u8]) -> Result<Self, String> {
+        if bytes.len() != Self::LEN || bytes[0] != Self::TYPE || bytes[1] != 1 {
+            return Err("invalid connection-quality warning framing".into());
+        }
+        let reason = match bytes[18] {
+            0 => ConnectionQualityWarningReason::ShotsRefused,
+            1 => ConnectionQualityWarningReason::HighLatency,
+            2 => ConnectionQualityWarningReason::PacketLoss,
+            _ => return Err("unknown connection-quality warning".into()),
+        };
+        let warning = Self {
+            server_session_id: u64::from_le_bytes(bytes[2..10].try_into().unwrap()),
+            arena_stream_id: u64::from_le_bytes(bytes[10..18].try_into().unwrap()),
+            reason,
+            rtt_ms: u16::from_le_bytes(bytes[19..21].try_into().unwrap()),
+            loss_per_mille: u16::from_le_bytes(bytes[21..23].try_into().unwrap()),
+        };
+        if warning.server_session_id == 0
+            || warning.arena_stream_id == 0
+            || warning.loss_per_mille > 1000
+        {
+            return Err("invalid connection-quality warning scope or loss".into());
+        }
+        Ok(warning)
+    }
+}
+
+#[cfg(test)]
+mod warning_tests {
+    use super::*;
+
+    #[test]
+    fn quality_warnings_round_trip_and_reject_malformed_frames() {
+        let warning = ConnectionQualityWarning {
+            server_session_id: 3,
+            arena_stream_id: 4,
+            reason: ConnectionQualityWarningReason::ShotsRefused,
+            rtt_ms: 311,
+            loss_per_mille: 160,
+        };
+        for reason in [
+            ConnectionQualityWarningReason::ShotsRefused,
+            ConnectionQualityWarningReason::HighLatency,
+            ConnectionQualityWarningReason::PacketLoss,
+        ] {
+            let warning = ConnectionQualityWarning { reason, ..warning };
+            let bytes = warning.encode();
+            assert_eq!(bytes.len(), ConnectionQualityWarning::LEN);
+            assert_eq!(ConnectionQualityWarning::parse(&bytes), Ok(warning));
+        }
+        let bytes = warning.encode();
+        for size in 0..ConnectionQualityWarning::LEN {
+            assert!(ConnectionQualityWarning::parse(&bytes[..size]).is_err());
+        }
+        let mut longer = bytes.clone();
+        longer.push(0);
+        assert!(ConnectionQualityWarning::parse(&longer).is_err());
+        for (offset, value) in [(0, 0x83), (1, 2), (18, 3)] {
+            let mut mutated = bytes.clone();
+            mutated[offset] = value;
+            assert!(
+                ConnectionQualityWarning::parse(&mutated).is_err(),
+                "{offset}"
+            );
+        }
+        for scope in [2..10, 10..18] {
+            let mut mutated = bytes.clone();
+            mutated[scope].fill(0);
+            assert!(ConnectionQualityWarning::parse(&mutated).is_err());
+        }
+        let excessive_loss = ConnectionQualityWarning {
+            loss_per_mille: 1001,
+            ..warning
+        };
+        assert!(ConnectionQualityWarning::parse(&excessive_loss.encode()).is_err());
+    }
+}
+
 #[cfg(test)]
 mod directive_tests {
     use super::*;

@@ -38,6 +38,7 @@ use browser_metrics::{
     ui_metrics_requested,
 };
 mod chat;
+mod chat_limits;
 #[cfg(test)]
 use chat::CHAT_MAX_CHARS;
 #[cfg(test)]
@@ -327,6 +328,7 @@ async fn main() {
 
     loop {
         let render_dt = get_frame_time();
+        game.record_render_frame(render_dt);
         game.reset_weapon_recovery_budget();
         // Browser key events arrive between animation callbacks, against the
         // frame that was actually presented by the preceding iteration.
@@ -335,7 +337,7 @@ async fn main() {
         // next presentation cursor. Authority is still applied before the edge
         // is consumed; a hard scope change makes this prepared receipt
         // unavailable instead of rebinding the edge to a successor life.
-        render_input.capture_frame(&mut input_events);
+        render_input.capture_frame(&mut input_events, game.chat_input_active());
         game.update_player_list_input(
             render_dt,
             screen_width(),

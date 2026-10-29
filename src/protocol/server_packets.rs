@@ -81,6 +81,7 @@ pub enum ServerPacket<'a> {
     QaTraceContext(QaTraceContext),
     ConnectionQualityProbe(ConnectionQualityProbe),
     ConnectionQualityDirective(ConnectionQualityDirective),
+    ConnectionQualityWarning(ConnectionQualityWarning),
     SpawnIdleSpectator(SpawnIdleSpectator),
     Unknown { packet_type: u8, payload: &'a [u8] },
 }
@@ -311,6 +312,9 @@ impl<'a> ServerPacket<'a> {
             }
             ConnectionQualityDirective::TYPE => {
                 ConnectionQualityDirective::parse(packet).map(Self::ConnectionQualityDirective)
+            }
+            ConnectionQualityWarning::TYPE => {
+                ConnectionQualityWarning::parse(packet).map(Self::ConnectionQualityWarning)
             }
             SpawnIdleSpectator::TYPE => {
                 SpawnIdleSpectator::parse(packet).map(Self::SpawnIdleSpectator)

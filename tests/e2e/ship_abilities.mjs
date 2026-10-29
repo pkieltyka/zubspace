@@ -109,7 +109,7 @@ async function main() {
       for (const item of ["repels", "bursts", "decoys", "thors", "rockets", "portals"]) {
         assert.equal(ready.local[item], 3, `${names[ship]} maximum ${item}`);
       }
-      assert.equal(ready.local.bricks, ship === 6 ? 100 : 3);
+      assert.equal(ready.local.bricks, 3);
       const transitions = [];
       async function status(key, expected, label) {
         const before = await witness(); await actor.press(key);

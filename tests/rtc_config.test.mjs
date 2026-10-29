@@ -88,7 +88,7 @@ test("ordinary browser play does not build discarded QA presentation diagnostics
 test("frame projection follows deferred Game application while physical edges retain the preceding draw", () => {
   const main = fs.readFileSync("src/main.rs", "utf8");
   const inputSource = main.indexOf("let mut input_events = FrameInputEvents::new();");
-  const capture = main.indexOf("render_input.capture_frame(&mut input_events);");
+  const capture = main.indexOf("render_input.capture_frame(&mut input_events, game.chat_input_active());");
   const receipt = main.indexOf("game.prepare_pending_semantic_weapon_receipt(&render_input, 0);");
   const poll = main.indexOf("game.poll_browser_network_before_gameplay();");
   const liveApplication = main.indexOf("game.update(");
