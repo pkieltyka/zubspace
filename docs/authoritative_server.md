@@ -664,7 +664,11 @@ server at once, while the victim's browser keeps its previous values until the
 private `PrizeState` reaches it. For input up to one measured round trip plus
 200 ms past the last input the server had received (at most one second of
 input, same life), a movement replay or turn history that fails at the new
-values is retried once at the replaced values (`DamageMovementGrace`).
+values is retried at the replaced values (`DamageMovementGrace`). The browser
+switches once, on the frame the change reaches it, so a replayed gap can run
+at the replaced values up to that frame and at the new values after it: the
+server tries the whole gap at the replaced values, then each later switch
+point inside the window.
 
 How the main effects apply:
 

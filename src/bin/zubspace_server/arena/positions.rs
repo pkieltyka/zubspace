@@ -1623,15 +1623,42 @@ fn accept_position_relay_with_spawn_deferral(
         };
         let mut canonical_replay = replay_with(movement_upgrades);
         // Input generated before the browser learned of a damage prize change
-        // replays with the replaced tuning (`DamageMovementGrace`).
+        // replays with the replaced tuning (`DamageMovementGrace`), up to the
+        // frame the change reached it: the browser switches once, so a gap may
+        // run old then current. All-old is tried first, then each later switch.
         if !canonical_replay.as_ref().is_some_and(replay_matches)
-            && let Some(tuning) = sender.damage_movement_grace_tuning(client_sequence)
+            && let Some(previous_sequence) = sender.last_position_sequence
         {
-            let grace_upgrades = crate::sim_observation::movement_upgrades_from_tuning(tuning);
-            let grace_replay = replay_with(grace_upgrades);
-            if grace_replay.as_ref().is_some_and(replay_matches) {
-                canonical_replay = grace_replay;
-                movement_upgrades = grace_upgrades;
+            for earlier in crate::sim_observation::damage_movement_grace_switch_points(
+                sender,
+                previous_sequence,
+                client_sequence,
+            ) {
+                let grace_replay =
+                    crate::sim_observation::replay_canonical_position_gap_with_earlier_tuning(
+                        sender,
+                        map,
+                        is_flagger,
+                        attached_riders,
+                        existing_repel_active,
+                        movement_upgrades,
+                        earlier,
+                        &enemy_brick_tiles,
+                        client_sequence,
+                        server_tick_at_accept,
+                        spawn_x,
+                        spawn_y,
+                        tail_bomb_recoil_speed,
+                        repel_application,
+                    );
+                if grace_replay.as_ref().is_some_and(replay_matches) {
+                    canonical_replay = grace_replay;
+                    // Later work continues from the tail's tuning.
+                    if earlier.last_sequence == client_sequence {
+                        movement_upgrades = earlier.upgrades;
+                    }
+                    break;
+                }
             }
         }
         // Safe-zone weapon presses emit no live weapon. Their exact logical

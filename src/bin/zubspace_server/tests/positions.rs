@@ -9238,6 +9238,198 @@ fn rotation_lost_to_damage_mid_turn_admits_turns_already_in_flight() {
     );
 }
 
+// Prod (blitz): damage took a Rotation prize (0.725 -> 0.625 turns/s) while
+// the pilot reversed and turned right. The browser learned of it 21 ms later,
+// between two inputs, so its next report ran one step at each rate. Neither
+// all-old nor all-new replays that; every later report replayed the same
+// growing gap and failed too, until a snap-back 1.1 s later.
+#[test]
+fn rotation_lost_to_damage_between_two_inputs_admits_the_mixed_gap() {
+    let state = Arc::new(Mutex::new(ServerState::default()));
+    let (tx, _rx) = mpsc::channel();
+    let player_id = register_connection(&state, tx);
+    join_arena(&state, player_id, 0);
+    let previous_sequence = 65_081_u16;
+    let anchor_tick = 20_000_u32;
+    // The prior accepted witness, exactly as prod logged it.
+    let prior = crate::state::ServerSimMovement {
+        position_x: 10082.054,
+        position_y: 8540.543,
+        orientation: 0.38374937,
+        velocity_x: 112.00606,
+        velocity_y: -130.59535,
+        energy: 423.0,
+        max_energy: 1700.0,
+    };
+    let push_input = |client: &mut crate::state::ClientHandle, sequence: u16, direction: u8| {
+        // Reverse + rotate right, as logged.
+        let input = crate::state::ClientInputObservation {
+            bits: 10,
+            direction,
+        };
+        client
+            .recent_input_records
+            .push_back(crate::state::SequencedInputObservation {
+                sequence,
+                input,
+                door_seed: 236,
+                door_phase_tick: 8_306_280,
+            });
+        client.last_input_seq = Some(sequence);
+        client.last_input_record = Some(input);
+    };
+    let (identity, rotation_before, rotation_after) = {
+        let mut locked = state.lock().expect("state");
+        let client = locked.clients.get_mut(&player_id).expect("client");
+        client.reset_server_runtime_for_ship_at_tick(anchor_tick);
+        client.life_position_sequence_base = None;
+        client.alive = true;
+        client.respawn_at_tick = None;
+        client.server_energy = 423;
+        let anchor = crate::state::CanonicalPositionWitness {
+            sequence: previous_sequence,
+            life_seq: client.life_seq,
+            state: prior,
+            wire_x: 10082,
+            wire_y: 8541,
+            wire_velocity_x: 1120,
+            wire_velocity_y: -1306,
+            direction: 15,
+            door_seed: 236,
+            door_phase_tick: 8_306_280,
+        };
+        let mut previous = client_position_packet_with_sequence(0, 10082, 8541, previous_sequence);
+        previous[1] = 15;
+        client.last_position =
+            Some(large_position_from_client(player_id, &previous).expect("previous position"));
+        client.last_position_sequence = Some(previous_sequence);
+        client.last_position_server_tick = Some(anchor_tick);
+        client.canonical_position_witnesses.clear();
+        client.canonical_position_witnesses.push_back(anchor);
+        client.canonical_movement_witness = Some(anchor);
+        seed_fixture_motion_baseline(client);
+        client.server_sim_state = Some(prior);
+        client.server_sim_anchor_tick = Some(anchor_tick);
+        client.server_sim_input_bits = Some(10);
+        client.recent_input_records.clear();
+        client.last_input_seq = Some(previous_sequence);
+        let rotation_before = client.server_rotation_per_second;
+        crate::server_damage::apply_damage_prize_loss_for_test(client, anchor_tick + 1, 1, 3);
+        let rotation_after = client.server_rotation_per_second;
+        push_input(client, 65_082, 15);
+        push_input(client, 65_083, 16);
+        (
+            locked.active_life_identity(player_id).expect("life"),
+            rotation_before,
+            rotation_after,
+        )
+    };
+    assert_eq!((rotation_before, rotation_after), (0.725, 0.625));
+
+    // The browser's report, bit for bit: one step at 0.725, then one at 0.625.
+    let report = |sequence: u16,
+                  (x, y): (u16, u16),
+                  (wire_vx, wire_vy): (i16, i16),
+                  direction: u8,
+                  bits: [u32; 5]| {
+        let locked = state.lock().expect("state");
+        let client = &locked.clients[&player_id];
+        let mut packet = client_position_packet_with_sequence(0, x, y, sequence);
+        packet[1] = direction;
+        packet[6..8].copy_from_slice(&wire_vx.to_le_bytes());
+        packet[14..16].copy_from_slice(&wire_vy.to_le_bytes());
+        packet[16..18].copy_from_slice(&client.server_bounty.to_le_bytes());
+        packet[18..20].copy_from_slice(&client.server_energy.to_le_bytes());
+        set_client_position_canonical_state(
+            &mut packet,
+            f32::from_bits(bits[0]),
+            f32::from_bits(bits[1]),
+            f32::from_bits(bits[2]),
+            f32::from_bits(bits[3]),
+            f32::from_bits(bits[4]),
+        );
+        packet
+    };
+    let mixed = report(
+        65_083,
+        (10086, 8536),
+        (1075, -1351),
+        16,
+        [1176344320, 1174757532, 1121390128, 3272020701, 1053818858],
+    );
+    assert!(
+        crate::arena::accept_position_relay_for_life_at_tick(
+            &state,
+            identity,
+            &mixed,
+            anchor_tick + 5,
+        )
+        .is_some(),
+        "a gap that switches rate where the browser learned of the loss is admitted"
+    );
+    {
+        let locked = state.lock().expect("state");
+        let client = &locked.clients[&player_id];
+        assert_eq!(client.last_position_sequence, Some(65_083));
+        assert!(client.pending_movement_correction.is_none());
+        assert_eq!(
+            client
+                .canonical_movement_witness
+                .map(|witness| witness.state.orientation.to_bits()),
+            Some(1053818858)
+        );
+    }
+
+    // From there the browser turns at the new rate and is admitted as usual.
+    let (next, next_sequence) = {
+        let mut locked = state.lock().expect("state");
+        let client = locked.clients.get_mut(&player_id).expect("client");
+        push_input(client, 65_084, 16);
+        push_input(client, 65_085, 17);
+        let mut upgrades = crate::sim_observation::movement_upgrades_for_client(client);
+        upgrades.rotation = rotation_after;
+        let (spawn_x, spawn_y) = server_spawn_coordinates(locked.zone_map());
+        let client = &locked.clients[&player_id];
+        let replay = crate::sim_observation::replay_canonical_position_gap(
+            client,
+            locked.zone_map(),
+            false,
+            false,
+            false,
+            upgrades,
+            &[],
+            65_085,
+            anchor_tick + 9,
+            spawn_x,
+            spawn_y,
+        )
+        .expect("the new rate replays");
+        (*replay.witnesses.last().expect("tail"), 65_085)
+    };
+    let packet = report(
+        next_sequence,
+        (next.wire_x, next.wire_y),
+        (next.wire_velocity_x, next.wire_velocity_y),
+        next.direction,
+        [
+            next.state.position_x.to_bits(),
+            next.state.position_y.to_bits(),
+            next.state.velocity_x.to_bits(),
+            next.state.velocity_y.to_bits(),
+            next.state.orientation.to_bits(),
+        ],
+    );
+    assert!(
+        crate::arena::accept_position_relay_for_life_at_tick(
+            &state,
+            identity,
+            &packet,
+            anchor_tick + 9,
+        )
+        .is_some()
+    );
+}
+
 #[test]
 fn attacker_selected_adjacent_sub_bin_rejects_weapon_before_projectile_spawn() {
     let state = Arc::new(Mutex::new(ServerState::default()));
