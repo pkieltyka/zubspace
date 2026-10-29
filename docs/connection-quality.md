@@ -77,6 +77,18 @@ claiming to be hidden (beyond those in flight when it hid) loses the pause,
 and that session's later hidden notices are ignored. Browsers that never send
 the notice are measured as before.
 
+**Frozen pages.** A page can also stop while visible: a long task, a
+suspended laptop, or a background the browser never reported. A running page
+sends positions many times a second and answers every probe, so a page that
+has sent nothing at all for 2 s has stopped, which is not path loss; partial
+loss still lets most packets through. While a page is silent, its unanswered
+probes are held instead of counting as loss. When any packet arrives again,
+the probes the silence spoiled (unanswered ones sent from 1 s before it began)
+are discarded, and their late echoes are ignored rather than recorded with a
+huge RTT. A peer that never speaks again is dropped by the transport, not by
+this policy. Each ended silence is counted in the session summary
+(`client_silences`).
+
 A new join or arena change starts a fresh window.
 
 ## Forced spectator

@@ -128,6 +128,7 @@ pub(crate) fn log(client: &ClientHandle) {
         weapons_rejected = summary.weapons_rejected,
         weapons_rejected_combat_view = summary.weapons_rejected_combat_view,
         page_hidden_periods = summary.page_hidden_periods,
+        client_silences = quality.as_ref().map(|quality| quality.client_silences),
         "session summary"
     );
 }

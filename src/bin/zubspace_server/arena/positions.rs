@@ -1912,7 +1912,12 @@ fn accept_position_relay_with_spawn_deferral(
         // its browser position need not repeat the server's current integer
         // energy. The global max-energy check above still rejects impossible
         // values; never make this non-authoritative wire mirror part of the
-        // one-shot relocation proof.
+        // one-shot relocation proof. Bounty is likewise stamped from server
+        // authority on the relay; a kill can raise it between the claim and
+        // the browser's report, so the bounty recorded with the claim also
+        // matches.
+        let warp_claim_bounty = matching_warp_prize_authorization_index
+            .map(|index| sender.pending_warp_prize_relocations[index].expected_bounty);
         let matching_warp_prize_details = snapshot.warp_collectible_id.is_some()
             && snapshot.timestamp == 0
             && snapshot.direction == canonical_direction
@@ -1922,7 +1927,8 @@ fn accept_position_relay_with_spawn_deferral(
             && snapshot.velocity_y == 0
             && snapshot.weapon == 0
             && snapshot.repel_snapshot_id.is_none()
-            && snapshot.bounty == sender.server_bounty
+            && (snapshot.bounty == sender.server_bounty
+                || warp_claim_bounty == Some(snapshot.bounty))
             && reported_status_is_owned
             && reported_exact_x.to_bits() == (spawn_x as f32).to_bits()
             && reported_exact_y.to_bits() == (spawn_y as f32).to_bits()

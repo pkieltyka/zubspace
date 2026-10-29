@@ -55,7 +55,7 @@ fn raw_spawn_loadouts_match_reference_capabilities_for_every_chaos_ship() {
         assert_eq!(weapons.gun_level, 3);
         assert_eq!(weapons.bomb_level, 0);
         assert!(!weapons.bouncing_bullets);
-        assert_eq!(weapons.bricks, if ship == 6 { 100 } else { 0 });
+        assert_eq!(weapons.bricks, 0);
         let statuses = crate::authority::StatusInventory::initialized(
             crate::state::status_inventory_tuning(ship),
         );
@@ -237,10 +237,13 @@ fn maxed_spawn_policy_keeps_bounty_thirty_and_maximizes_all_human_and_bot_ships(
             assert!(client.server_weapons.multifire_capable);
             assert!(client.server_weapons.proximity_bombs);
             assert!(client.server_weapons.bouncing_bullets);
-            assert_eq!(
-                client.server_weapons.bricks,
-                if ship == 6 { 100 } else { 3 }
-            );
+            assert_eq!(client.server_weapons.bricks, 3);
+            for remaining in (0..3).rev() {
+                assert!(client.server_weapons.can_spend_brick());
+                client.server_weapons.spend_brick();
+                assert_eq!(client.server_weapons.bricks, remaining);
+            }
+            assert!(!client.server_weapons.can_spend_brick());
             assert_eq!(client.server_weapons.repels, 3);
             assert_eq!(client.server_weapons.bursts, 3);
             assert_eq!(client.server_weapons.decoys, 3);

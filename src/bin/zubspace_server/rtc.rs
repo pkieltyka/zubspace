@@ -1227,6 +1227,16 @@ fn enqueue_rtc_ingress_message(
     ingress: &RtcInboundQueue,
     packet: Vec<u8>,
 ) -> bool {
+    let received_at = Instant::now();
+    // Any packet shows the page is running; record it before the echo below
+    // so an answer that ends a silence is judged after that silence.
+    if let Some(outbound) = session.outbound_queue() {
+        outbound
+            .quality
+            .lock()
+            .expect("session quality lock poisoned")
+            .note_inbound(received_at);
+    }
     if packet.first()
         == Some(&crate::connection_quality_protocol::ConnectionQualityProbe::ECHO_TYPE)
     {
@@ -1248,7 +1258,7 @@ fn enqueue_rtc_ingress_message(
                     .quality
                     .lock()
                     .expect("session quality lock poisoned")
-                    .receive_echo(probe, Instant::now());
+                    .receive_echo(probe, received_at);
             }
         }
         return true;

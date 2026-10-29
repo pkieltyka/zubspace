@@ -5066,6 +5066,14 @@
               await signalingDeadline.wait(peer.setRemoteDescription(answer));
               ensureCurrentAttempt();
               networkLog("log", "rtc answer accepted", { offerUrl });
+              // The server drops a peer whose channels have not opened 20 s after its answer, which in practice
+              // means a network blocking the game's UDP. Stop waiting then too, not at the browser's later ICE timeout.
+              window.setTimeout(() => {
+                if (state.connectionAttempt === attempt && rtcLifecycle.isActive(peer) &&
+                    state.openNotifiedAt == null) {
+                  rtcLifecycle.terminatePeer(peer, 4, "RTC channels did not open within 20 s of the answer");
+                }
+              }, 20000);
             } catch (error) {
               if (state.connectionAttempt !== attempt) {
                 networkLog("log", "stale rtc connection attempt ended", {
@@ -5492,7 +5500,8 @@
                 if (lifecycle?.[fact]) timing[key] ??= now;
               }
             }
-            if (state.status === 4) { returnToMainMenu(3); return; }
+            // A transport that never opened got its answer but no UDP path to the game server.
+            if (state.status === 4) { returnToMainMenu(state.openNotifiedAt == null ? 6 : 3); return; }
             const text = document.querySelector("#loading-identity-text");
             if (!text) return;
             const longWait = timing && now - timing.requestedAt >= 15000;

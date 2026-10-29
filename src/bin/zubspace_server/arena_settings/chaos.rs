@@ -418,16 +418,12 @@ fn write_chaos_ship_settings(data: &mut [u8], offset: usize, profile: ChaosShipP
     data[offset + 110] = CHAOS_MAX_CONSUMABLE;
     data[offset + 111] = CHAOS_MAX_CONSUMABLE;
     data[offset + 112] = CHAOS_MAX_CONSUMABLE;
-    data[offset + 113] = if profile.bomb_bounces > 0 {
-        100
-    } else {
-        CHAOS_MAX_CONSUMABLE
-    };
+    data[offset + 113] = CHAOS_MAX_CONSUMABLE;
     data[offset + 114] = CHAOS_MAX_CONSUMABLE;
     data[offset + 115] = CHAOS_MAX_CONSUMABLE;
     data[offset + 116] = 0;
     data[offset + 117] = 0;
-    data[offset + 118] = if profile.bomb_bounces > 0 { 100 } else { 0 };
+    data[offset + 118] = 0;
     data[offset + 119] = 0;
     data[offset + 120] = 0;
     data[offset + 121] = 0;

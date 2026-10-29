@@ -24,7 +24,8 @@ test('normal rejection messages distinguish name, population and connection fail
   assert.equal(admission.message(2), 'Sorry, the arena is full at this time.');
   assert.equal(admission.message(3), 'Unable to connect. Please try again.');
   assert.equal(admission.message(5), 'Use 1–14 letters, numbers, !, *, - or _, with single spaces between words.');
-  for (const code of [0, -1, 6, '1', '4', '5', 'toString', '__proto__']) assert.equal(admission.message(code), null);
+  assert.match(admission.message(6), /blocking the UDP traffic.*Try another network/);
+  for (const code of [0, -1, 7, '1', '4', '5', 'toString', '__proto__']) assert.equal(admission.message(code), null);
 });
 
 test('player name normalization matches the shared server vectors without filtering or truncating', () => {

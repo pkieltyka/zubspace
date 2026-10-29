@@ -8232,6 +8232,55 @@ fn warp_relocation_accepts_current_bounty_after_a_later_ordered_prize_ack() {
 }
 
 #[test]
+fn warp_relocation_accepts_the_claim_bounty_after_a_kill_raised_the_server_bounty() {
+    let accepted_tick = 47_500;
+    let sequence = 1_100;
+    for (label, reported_offset, accepted) in
+        [("claim bounty", 0_u16, true), ("neither bounty", 1, false)]
+    {
+        let (state, player_id, identity, mut packet) =
+            warp_relocation_fixture(accepted_tick, accepted_tick + 500, sequence);
+        let (claim_bounty, server_bounty) = {
+            let mut locked = state.lock().expect("state");
+            let client = locked.clients.get_mut(&player_id).expect("client");
+            let claim_bounty = client
+                .pending_warp_prize_relocations
+                .front()
+                .expect("Warp authorization")
+                .expected_bounty;
+            // A kill after the claim raises bounty before the browser reports.
+            client.server_bounty = claim_bounty.saturating_add(2);
+            (claim_bounty, client.server_bounty)
+        };
+        let reported = claim_bounty.saturating_add(reported_offset);
+        packet[16..18].copy_from_slice(&reported.to_le_bytes());
+        record_position_witness(&state, player_id, sequence, 7);
+
+        let relay = crate::arena::accept_position_relay_for_life_at_tick(
+            &state,
+            identity,
+            &packet,
+            accepted_tick,
+        );
+        assert_eq!(relay.is_some(), accepted, "{label}");
+        let locked = state.lock().expect("state");
+        let client = &locked.clients[&player_id];
+        assert_eq!(
+            client.pending_warp_prize_relocations.is_empty(),
+            accepted,
+            "{label}"
+        );
+        if let Some(relay) = relay {
+            assert_eq!(
+                u16::from_le_bytes(relay.position[17..19].try_into().expect("bounty")),
+                server_bounty,
+                "the relay publishes server bounty, not the reported one"
+            );
+        }
+    }
+}
+
+#[test]
 fn warp_relocation_ignores_old_position_then_consumes_exactly_once() {
     let accepted_tick = 50_000;
     let expires_at_tick = accepted_tick + 500;

@@ -50,7 +50,10 @@ transport and the wire.
    empty subprotocol. Anything else (a fourth channel, a duplicate, a
    negotiated channel, altered ordering or lifetime) is a protocol violation
    and closes the peer. A peer whose channels have not all opened within 20 s
-   of the answer is dropped.
+   of the answer is dropped. The page gives up at the same point and returns
+   to the menu saying the network may be blocking the game's UDP traffic
+   (work, school and some public Wi-Fi networks do); there is deliberately no
+   TCP relay fallback.
 4. **Registration.** When all three channels are open the server allocates a
    player id and starts the session's writer.
 5. **Login.** The client sends a Continuum password login (`0x24`) carrying the

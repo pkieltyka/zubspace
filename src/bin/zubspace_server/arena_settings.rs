@@ -1035,14 +1035,14 @@ mod per_zone_profile_tests {
             Some("extreme")
         );
         // The reference game's packed header and unchanged checksum implementation independently
-        // verify these goldens. Chaos intentionally uses the shared central range176;
-        // the former768 range produced CRC90f25b6f and security checksumf975c357.
+        // verify these goldens. Chaos uses the shared central range176 and
+        // the same three-brick maximum for every ship.
         assert_eq!(short_i16(chaos, 68), 176);
-        assert_eq!(crate::wire::continuum_file_crc32(chaos), 0xd57d_93a0);
+        assert_eq!(crate::wire::continuum_file_crc32(chaos), 0xec15_cf5c);
         assert_eq!(crate::wire::continuum_file_crc32(extreme), 0x9ee4_b78d);
         assert_eq!(
             continuum_settings_checksum(crate::security::SECURITY_CHECKSUM_KEY, chaos),
-            0xf975_c6a7
+            0xf951_9fa7
         );
         assert_eq!(
             continuum_settings_checksum(crate::security::SECURITY_CHECKSUM_KEY, extreme),

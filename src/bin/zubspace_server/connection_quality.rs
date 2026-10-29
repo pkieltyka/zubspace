@@ -31,6 +31,17 @@ const SERVER_STALL: Duration = Duration::from_secs(1);
 /// shows the page is playing, and the claim is voided.
 const HIDDEN_GAMEPLAY_LIMIT: u32 = 60;
 
+/// A playing browser sends positions many times a second and echoes every
+/// probe, so this long without any packet means the page itself stopped (a
+/// long task, a suspended laptop, a background tab it could not report), not
+/// that the path is losing packets: total silence is not partial loss. Its
+/// unanswered probes are held while it is silent and discarded once it speaks
+/// again; a peer that never returns is dropped by the transport.
+const CLIENT_SILENCE: Duration = Duration::from_secs(2);
+/// Probes sent this long before the silence began were spoiled by it too:
+/// their echoes were due while the page was not running.
+const SILENCE_LEAD: Duration = Duration::from_secs(1);
+
 /// Client-originated `0x85`: the page became hidden (1) or visible (0). A
 /// hidden browser page runs no frames, so it answers no probes, and that
 /// silence is not path loss. Visibility only pauses measurement; it never
@@ -159,6 +170,9 @@ pub(crate) struct ConnectionQuality {
     bad_since: Option<Instant>,
     healthy_since: Option<Instant>,
     cooldown_until: Option<Instant>,
+    /// The client has sent nothing for `CLIENT_SILENCE`: unanswered probes
+    /// wait instead of maturing into loss.
+    client_silent: bool,
 }
 
 impl ConnectionQuality {
@@ -176,7 +190,24 @@ impl ConnectionQuality {
             bad_since: None,
             healthy_since: None,
             cooldown_until: None,
+            client_silent: false,
         }
+    }
+
+    /// Drop the unanswered probes sent from `since` on, matured or not, and
+    /// return their nonces.
+    fn void_unanswered_since(&mut self, since: Instant) -> Vec<u64> {
+        let mut voided = Vec::new();
+        for probes in [&mut self.pending, &mut self.samples] {
+            probes.retain(|probe| {
+                let keep = probe.rtt.is_some() || probe.sent_at < since;
+                if !keep {
+                    voided.push(probe.nonce);
+                }
+                keep
+            });
+        }
+        voided
     }
 
     pub(crate) fn probe_due(&self, now: Instant) -> bool {
@@ -252,11 +283,10 @@ impl ConnectionQuality {
         self.last_poll = now;
         // Mature successes and losses at the same age: fast echoes otherwise
         // bias the current window toward success while lost probes are pending.
-        while self
-            .pending
-            .front()
-            .is_some_and(|p| now.saturating_duration_since(p.sent_at) >= PROBE_TIMEOUT)
-        {
+        while self.pending.front().is_some_and(|p| {
+            now.saturating_duration_since(p.sent_at) >= PROBE_TIMEOUT
+                && (p.rtt.is_some() || !self.client_silent)
+        }) {
             self.samples.push_back(self.pending.pop_front().unwrap());
         }
         while self
@@ -472,6 +502,12 @@ pub(crate) struct SessionConnectionQuality {
     pub(crate) window_rtt_ms_peak: f64,
     window_rtt_ms_total: f64,
     rtt_windows: u32,
+    /// Latest authenticated packet of any kind from this browser.
+    last_inbound: Option<Instant>,
+    /// Probes discarded after a silence; their late echoes are ignored.
+    voided_nonces: VecDeque<u64>,
+    /// Silences of at least `CLIENT_SILENCE` that ended in this session.
+    pub(crate) client_silences: u32,
 }
 
 impl SessionConnectionQuality {
@@ -508,7 +544,28 @@ impl SessionConnectionQuality {
             window_rtt_ms_peak: 0.0,
             window_rtt_ms_total: 0.0,
             rtt_windows: 0,
+            last_inbound: None,
+            voided_nonces: VecDeque::new(),
+            client_silences: 0,
         }
+    }
+
+    /// Any authenticated packet from the browser, at RTC receipt. Ending a
+    /// silence discards the probes it spoiled (see `CLIENT_SILENCE`).
+    pub(crate) fn note_inbound(&mut self, now: Instant) {
+        if let Some(last) = self.last_inbound
+            && now.saturating_duration_since(last) >= CLIENT_SILENCE
+        {
+            let since = last.checked_sub(SILENCE_LEAD).unwrap_or(last);
+            for nonce in self.monitor.void_unanswered_since(since) {
+                if self.voided_nonces.len() >= 2 * MAX_PENDING {
+                    self.voided_nonces.pop_front();
+                }
+                self.voided_nonces.push_back(nonce);
+            }
+            self.client_silences = self.client_silences.saturating_add(1);
+        }
+        self.last_inbound = Some(now);
     }
 
     pub(crate) fn configure(&mut self, policy: ConnectionQualityPolicy) {
@@ -597,6 +654,9 @@ impl SessionConnectionQuality {
             self.cancel_queued();
             self.monitor.discard_window(now);
         }
+        self.monitor.client_silent = self
+            .last_inbound
+            .is_some_and(|at| now.saturating_duration_since(at) >= CLIENT_SILENCE);
         let reading = self.monitor.poll(now);
         self.reading = Some(reading);
         Some(reading)
@@ -665,6 +725,11 @@ impl SessionConnectionQuality {
 
     /// On the authenticated RTC game channel, before the application queue.
     pub(crate) fn receive_echo(&mut self, probe: ConnectionQualityProbe, now: Instant) -> bool {
+        if self.voided_nonces.contains(&probe.nonce) {
+            // A late answer from a page that had stopped: neither a sample
+            // nor a forgery.
+            return false;
+        }
         if !self.measuring()
             || probe.server_session_id != crate::wire::server_session_id()
             || probe.arena_stream_id != self.arena_stream_id
@@ -1487,6 +1552,88 @@ mod tests {
             }
         }
         forced
+    }
+
+    /// `drive` for a running page: positions arrive every step and each echo
+    /// is itself an inbound packet.
+    fn drive_live(
+        session: &mut SessionConnectionQuality,
+        base: Instant,
+        from_ms: u64,
+        to_ms: u64,
+        rtt_ms: Option<u64>,
+    ) -> bool {
+        let mut forced = false;
+        for ms in (from_ms..to_ms).step_by(500) {
+            let now = base + Duration::from_millis(ms);
+            session.note_inbound(now);
+            forced |= session
+                .poll(now, true)
+                .is_some_and(|reading| reading.should_spectate);
+            if let Some(probe) = session.reserve_probe(ms + 1, now) {
+                assert!(session.begin_dispatch(probe, now));
+                if let Some(rtt) = rtt_ms {
+                    let answered = now + Duration::from_millis(rtt);
+                    session.note_inbound(answered);
+                    assert!(session.receive_echo(probe, answered));
+                }
+            }
+        }
+        forced
+    }
+
+    // Prod: a 23 ms player's browser stopped drawing for 15.6 s while visible.
+    // The unanswered probes read as 48% loss and forced them to spectator.
+    #[test]
+    fn a_frozen_page_is_not_packet_loss_but_a_lossy_live_page_still_is() {
+        let base = Instant::now();
+        let mut frozen = SessionConnectionQuality::new(base);
+        frozen.reset_scope(1, base);
+        assert!(!drive_live(&mut frozen, base, 0, 20_000, Some(25)));
+        // Nothing at all arrives for 15 s: no positions, no echoes.
+        for ms in (20_000..35_000).step_by(500) {
+            let now = base + Duration::from_millis(ms);
+            let reading = frozen.poll(now, true).expect("measuring");
+            assert!(!reading.should_spectate, "{ms}");
+            assert_eq!(reading.round_trip_loss, 0.0, "{ms}: held, not lost");
+            if let Some(probe) = frozen.reserve_probe(ms + 1, now) {
+                assert!(frozen.begin_dispatch(probe, now));
+            }
+        }
+        let held = frozen
+            .monitor
+            .pending
+            .iter()
+            .filter(|probe| probe.rtt.is_none())
+            .map(|probe| (probe.nonce, probe.sequence.expect("dispatched")))
+            .collect::<Vec<_>>();
+        assert!(!held.is_empty());
+        // The page runs again: its first packet discards the spoiled probes,
+        // and its late answers are neither samples nor forgeries.
+        let resumed = base + Duration::from_secs(35);
+        frozen.note_inbound(resumed);
+        assert_eq!(frozen.client_silences, 1);
+        for (nonce, sequence) in held {
+            let probe = ConnectionQualityProbe {
+                server_session_id: crate::wire::server_session_id(),
+                arena_stream_id: 1,
+                sequence,
+                nonce,
+            };
+            assert!(!frozen.receive_echo(probe, resumed));
+        }
+        assert_eq!(frozen.invalid_echoes, 0);
+        assert!(!drive_live(&mut frozen, base, 35_000, 60_000, Some(25)));
+        let reading = frozen.reading.expect("reading");
+        assert_eq!(reading.round_trip_loss, 0.0);
+        assert!(reading.average_rtt_ms.is_some_and(|rtt| rtt < 30.0));
+
+        // A page that keeps sending while its probes go unanswered is losing
+        // packets on the path, and is still moved to spectator.
+        let mut lossy = SessionConnectionQuality::new(base);
+        lossy.reset_scope(1, base);
+        assert!(drive_live(&mut lossy, base, 0, 30_000, None));
+        assert_eq!(lossy.client_silences, 0);
     }
 
     // Prod: a 25 ms player whose page was hidden for about 15 s answered no
