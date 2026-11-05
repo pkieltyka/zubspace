@@ -134,14 +134,9 @@
 .arrow-top { display: flex; justify-content: center; margin-bottom: 5px; }
 .arrow-top .flight-key { flex: none; width: 57px; }
 .arrow-keyboard .flight-key { border-color: #ccc; background: #272727; }
-.controls-notes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; border-top: 1px solid #ffffff20; margin-top: 8px; padding-top: 18px; }
-.controls-notes p { margin: 0; color: #999; font-size: 10px; }
-.controls-notes kbd { display: block; color: #eee; font: 11px/2 ui-monospace, Consolas, monospace; }
-.controls-footnote { margin: 22px 0 0; color: #888; font-size: 10px; }
 @media (max-width: 700px) {
   #controls-dialog { padding: 20px; }
   #controls-title { font-size: 18px; }
-  .controls-notes { grid-template-columns: repeat(2, 1fr); }
   .menu-controls { gap: 9px; }
   .menu-controls-text { max-width: 290px; font-size: 12px; gap: 2px 7px; }
 }
@@ -191,8 +186,15 @@
 }
 
 /* Readable full keyboard: secondary letters remain visible without competing. */
-#controls-dialog { width: min(1320px, calc(100vw - 32px)); cursor: default; }
-#controls-description { font-size: 15px; }
+#controls-dialog {
+  --controls-scale: 1;
+  zoom: var(--controls-scale);
+  width: min(1320px, calc((100vw - 32px) / var(--controls-scale)));
+  max-height: calc((100dvh - 32px) / var(--controls-scale));
+  padding: 24px;
+  cursor: default;
+}
+#controls-description { font-size: 14px; margin: 12px 0 20px; }
 .flight-keyboard { min-width: 1150px; }
 .flight-key { height: 74px; gap: 3px; }
 .flight-key kbd { font-size: 16px; }
@@ -217,7 +219,7 @@
 #controls-dialog[data-layout="2"] .flight-key[data-layout="1"] kbd { color: #666; font-size: 13px; }
 #controls-dialog[data-layout="1"] .flight-key[data-layout="2"] > :not(kbd),
 #controls-dialog[data-layout="2"] .flight-key[data-layout="1"] > :not(kbd) { display: none; }
-.controls-layouts { display: flex; flex-wrap: wrap; gap: 8px; margin: -10px 0 24px; }
+.controls-layouts { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
 .controls-layouts button { min-height: 44px; padding: 8px 16px; border: 1px solid #ffffff30; background: #0d0d0d; color: #999; font: 13px/1.4 ui-monospace, Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
 .controls-layouts button:hover { color: #fff; }
 .controls-layouts button[aria-pressed="true"] { border-color: #ddd; background: #1d1d1d; color: #fff; }
@@ -230,12 +232,6 @@
 .controls-layouts button[data-layout-option="2"][aria-pressed="true"] { border-color: #c5a6ed; background: #49336c; color: #fff; }
 #controls-close { min-width: 44px; min-height: 44px; }
 .control-icon { display: block; flex-shrink: 0; width: 26px; height: 24px; background-image: url(zubspace_icons.png); image-rendering: pixelated; }
-.controls-legend { display: flex; flex-wrap: wrap; gap: 10px 24px; font-size: 14px; margin: 8px 0 22px; }
-.legend-green { color: #b3edc5; }
-.legend-yellow { color: #f1da88; }
-.legend-special { color: #b1d7f7; }
-.controls-notes p, .controls-footnote { font-size: 13px; line-height: 1.7; }
-.controls-notes kbd { font-size: 14px; }
 
 @media (prefers-reduced-motion: reduce) {
   #controls-open, .controls-launch-icon { transition: none; }
@@ -243,8 +239,15 @@
 
 /* First-play acknowledgement shares the guide; ordinary help has no join action. */
 .controls-welcome-action { display: none; }
-#controls-dialog[data-welcome="true"] .controls-welcome-action { display: block; margin-top: 24px; text-align: center; }
-.controls-welcome-action p { color: #bdb5ce; font-size: 14px; line-height: 1.6; }
+#controls-dialog[data-welcome="true"] .controls-welcome-action { display: block; margin-top: 8px; text-align: center; }
 #controls-ready { min-height: 48px; padding: 12px 32px; border: 1px solid #c5a6ed; background: #49336c; color: #fff; font: 16px/1.4 ui-monospace, Consolas, monospace; cursor: pointer; }
 #controls-ready:hover { background: #604687; }
 #controls-ready:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
+
+/* Scale the whole reference together so its keyboard and action fit short
+   laptop windows, including browser chrome and zoom. No measured JS layout. */
+@media (max-height: 850px), (max-width: 1200px) { #controls-dialog { --controls-scale: .8; } }
+@media (max-height: 700px), (max-width: 1000px) { #controls-dialog { --controls-scale: .65; } }
+@media (max-height: 560px), (max-width: 800px) { #controls-dialog { --controls-scale: .5; } }
+@media (max-height: 440px), (max-width: 600px) { #controls-dialog { --controls-scale: .38; } }
+@media (max-height: 340px), (max-width: 420px) { #controls-dialog { --controls-scale: .28; } }

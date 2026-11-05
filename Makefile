@@ -968,6 +968,10 @@ test-e2e-maxed-respawn: test-snapshot-parser
 	ZUBSPACE_SMOKE_LOG_LEVEL=debug ZUBSPACE_E2E_ARENA=extreme ZUBSPACE_E2E_HEADLESS=0 node tests/e2e/maxed_respawn.mjs
 
 # Narrow browser storage component; no gameplay/performance acceptance claim.
+.PHONY: test-browser-controls-layout
+test-browser-controls-layout:
+	node tests/e2e/controls_layout.mjs
+
 .PHONY: test-browser-zone-cache
 test-browser-zone-cache:
 	ZUBSPACE_E2E_HEADLESS=1 node tests/e2e/zone_cache_storage.mjs

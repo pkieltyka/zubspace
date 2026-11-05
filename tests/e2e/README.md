@@ -243,6 +243,15 @@ server rejects duplicate names.
   second checks the HUD carry badge pixels before, during and after a carry.
   These prove presentation only.
 
+## Controls welcome layout
+
+`make test-browser-controls-layout` runs headless Chrome against the shipped
+menu DOM, CSS and menu script at laptop and smaller viewport sizes. It checks
+that the whole keyboard and ready button fit without scrolling, that X and
+the ready button both acknowledge first entry, and that ordinary help closes.
+It needs no WASM build or game server. Set `ZUBSPACE_CONTROLS_SCREENSHOT` to a
+PNG path to retain the 1440×780 welcome view.
+
 ## Independent combat under a stalled recipient
 
 Run `make dev`, then
