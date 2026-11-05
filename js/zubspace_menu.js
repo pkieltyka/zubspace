@@ -261,7 +261,10 @@
   const creditsOpen = document.querySelector("#credits-open");
   const creditsClose = document.querySelector("#credits-close");
   const openControls = () => { if (active && !dialog.open && !credits.open) dialog.showModal(); };
-  const closeControls = () => dialog.close();
+  const closeControls = () => {
+    if (dialog.dataset.welcome === "true") document.querySelector("#controls-ready").click();
+    else dialog.close();
+  };
   const openCredits = () => { if (active && !credits.open && !dialog.open) credits.showModal(); };
   const closeCredits = () => credits.close();
   // Keep the global game keyboard bridge out of the modal's input layer.
